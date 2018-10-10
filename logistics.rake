@@ -6,6 +6,71 @@ namespace :logistics do
     resp.status_200?
   end
 
+
+  task multi_send_to_nationwide: :environment do
+    run('logistics:admin_dashboard_login', true)
+    hcm_orders = %w[MD95649972 MD15729972 MD71429972 MD359006 MD128895 MD818895 MD518895 MD252795]
+    nationwide_orders = %w[MD330995 MD030995 MD720995 MD017004 MD085004 MD145004 MD024004 MD314004 MD083004]
+    buses_orders = %w[MD04349972 MD73349972 MD22349972 MD61349972 MD95249972 MD35249972 MD44139972 MD83139972 MD29039972 MD17829972 MD26729972 MD56629972 MD15629972 MD34629972]
+    order_code_list = []
+
+    all_orders = [hcm_orders, nationwide_orders, buses_orders].flatten
+    backup_order_status = fetch_logistic_order_status(all_orders)
+    details_msg('Action:', 'Database is backing up ...')
+    all_orders.each do |code|
+      order_code_list << {
+        code: code,
+        date: rand(1..10).days_ago.strftime('%Y-%m-%d %H:%M')
+      }
+    end
+
+    params = {
+      email: 'hoanghiepitvnn@gmail.com',
+      order_code_list: order_code_list.to_json
+    }
+
+    details_msg('Action:', 'Sending request to server ...')
+    resp = put('logistics/orders/multi_send_to_nationwide', params, api_token)
+    resp.status_200?
+
+    details_msg('Action:', 'Salling task \'rake job_queues:process\' ...')
+    %x{ rake job_queues:process }
+
+    details_msg('Action:', 'Process and checking to ensure data valid ...')
+    JSON.parse(params[:order_code_list], symbolize_names: true).each do |item|
+      order = Backend::App::Orders.by_parameters(code: item[:code], limit: 1)
+      is_hcm_order = hcm_orders.include?(item[:code])
+      is_nationwide_order = nationwide_orders.include?(item[:code])
+      is_buses_order = buses_orders.include?(item[:code])
+      logistic_order_status =
+        case true
+        when is_nationwide_order
+          'nationwide_sent'
+        when is_buses_order
+          'buses_sent'
+        when is_hcm_order
+          %w[nationwide_sent buses_sent]
+        end
+
+      begin
+        if is_hcm_order
+          resp.not_include?(logistic_order_status, order.logistic_order_status)
+        else
+          resp.eq?(order.logistic_order_status, logistic_order_status)
+          resp.eq?(order.nationwide_sent_date.strftime('%Y-%m-%d %H:%M'), item[:date])
+        end
+        success_msg_inline('.')
+      rescue e
+        error_msg("\nOrder #{item[:code]} => #{e}")
+      end
+    end
+
+    after_restore = restore_logistic_order_status(backup_order_status)
+    details_msg("\nAction:", 'Database is restoring ...')
+    resp.eq?(backup_order_status, after_restore)
+    pass('multi_send_to_nationwide')
+  end
+  
   task delivery_import_order: :environment do
     run('logistics:admin_dashboard_login', true)
     resp = post('logistics/delivery/import_order', {
@@ -17,5 +82,27 @@ namespace :logistics do
     }, api_token)
     resp.status_200?
     resp.message_eq?('Đã cập nhật thành công !')
+    pass('delivery_import_order')
+  end
+
+  def fetch_logistic_order_status(order_codes)
+    sql = <<-SQL
+      select code, logistic_order_status
+      from res_order
+      where code IN (#{order_codes.map{|code| "'#{code}'"}.join(',')})
+    SQL
+    execute_sql(sql).to_a
+  end
+
+  def restore_logistic_order_status(orders)
+    orders.each do |order|
+      sql = <<-SQL
+        update res_order
+        set logistic_order_status = '#{order[:logistic_order_status]}'
+        where code = '#{order[:code]}'
+      SQL
+      execute_sql(sql)
+    end
+    fetch_logistic_order_status(orders.map { |order| order[:code] })
   end
 end

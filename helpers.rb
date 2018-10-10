@@ -102,6 +102,21 @@ HTTParty::Response.class_eval do
     raise "Value was expected is: #{value_expected} but got: #{value}".colorize(:red)
   end
 
+  def not_eq?(value, value_expected)
+    return true unless value_expected == value
+    raise "Value was expected is: #{value_expected} and got: #{value}".colorize(:red)
+  end
+
+  def include?(arr, element)
+    return true if arr.include?(element)
+    raise "Value was expected must include in: #{arr} but value got: #{value}".colorize(:red)
+  end
+
+  def not_include?(arr, element)
+    return true unless arr.include?(element)
+    raise "Value was expected must not include in: #{arr} but value got: #{value}".colorize(:red)
+  end
+
   def lt?(v1, v2)
     return true if v1 < v2
     raise "Value 1 is: #{v1} not less than #{v2}".colorize(:red)
@@ -154,7 +169,7 @@ def agent_login(phone, password)
 end
 
 def dashboard_logistic_login!
-  logistic_login('0978838249', '889052')
+  logistic_login(ENV['ADMIN_DASHBOARD_PHONE'], ENV['ADMIN_DASHBOARD_PASSD'])
 end
 
 def login_agent!
@@ -199,8 +214,26 @@ def success_msg(msg = '')
   puts msg.colorize(:green)
 end
 
+def success_msg_inline(msg = '')
+  print msg.colorize(:green)
+end
+
 def error_msg(msg = '')
   puts msg.colorize(:red)
+end
+
+def error_msg_inline(msg = '')
+  print msg.colorize(:red)
+end
+
+def pass(task_name)
+  success_msg("Task #{task_name} was PASSED")
+end
+
+def failure(task_name, description = nil)
+  msg = ['Task #{task_name} was FAILED']
+  msg << "Description: #{description}" if description.present?
+  error_msg(msg.join('. '))
 end
 
 def force_reset_default_password_by_phone(phone)
@@ -211,6 +244,14 @@ def force_reset_default_password_by_phone(phone)
       where phone = '#{phone}'
     SQL
 
-  db = DatabasePool.get_connector
-  db.query(sql: sql)
+  execute_sql(sql)
 end
+
+def db_connection
+  DatabasePool.get_connector
+end
+
+def execute_sql(sql)
+  db_connection.query(sql: sql)
+end
+
