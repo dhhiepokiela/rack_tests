@@ -48,3 +48,9 @@ build-iPhoneSimulator/
 
 # unless supporting rvm < 1.11.0 or doing something fancy, ignore this:
 .rvmrc
+
+*.sql
+environment.rb
+data_logs
+db_actions.rake
+console_v2.rake
