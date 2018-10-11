@@ -1,7 +1,7 @@
 require_relative 'environment.rb'
 
 namespace :clients do
-  task all: :environment do
+  task all: :environment do |t|
     run('clients:reset_password_default')
     run('clients:login_success')
     run('clients:login_failure_wrong_pass')
@@ -13,22 +13,22 @@ namespace :clients do
     run('clients:simple_price_check')
   end
 
-  task login_success: :environment do
+  task login_success: :environment do |t|
     resp = client_login(ENV['PHONE_NUMBER'], ENV['DEFAULT_PASSWORD'])
     resp.status_200?
   end
 
-  task manager_loged_in_success: :environment do
+  task manager_loged_in_success: :environment do |t|
     resp = logistic_login(ENV['PHONE_NUMBER'], ENV['DEFAULT_PASSWORD'])
     resp.status_200?
   end
 
-  task login_failure_wrong_pass: :environment do
+  task login_failure_wrong_pass: :environment do |t|
     resp = client_login(ENV['PHONE_NUMBER'], ENV['NEW_PASSWORD'])
     resp.status_403?
   end
 
-  task reset_password: :environment do
+  task reset_password: :environment do |t|
     resp = put('auth/reset-password', {
       phone: ENV['PHONE_NUMBER'], 
       client_type: :web_ex_client
@@ -36,7 +36,8 @@ namespace :clients do
     resp.status_200?
   end
 
-  task reset_password_default: :environment do
+  task reset_password_default: :environment do |t|
+    starting(t)
     run('clients:reset_password', true)
     auth_params = {
       phone: ENV['PHONE_NUMBER'],
@@ -49,9 +50,10 @@ namespace :clients do
       token: Backend::App::Users.by_parameters(auth_params).auth_reset_password,
       password: ENV['DEFAULT_PASSWORD']
     })
+    pass(t)
   end
 
-  task change_password: :environment do
+  task change_password: :environment do |t|
     run('clients:login_success', true)
     resp = put('auth/change-password', {phone: ENV['PHONE_NUMBER'], old_password: ENV['DEFAULT_PASSWORD'], new_password: ENV['NEW_PASSWORD']}, api_token)
     resp.status_201?
@@ -62,7 +64,7 @@ namespace :clients do
     run('clients:login_success', true)
   end
 
-  task create_success: :environment do
+  task create_success: :environment do |t|
     phone_number = "0128528#{ "%02d" % rand(1000..9999) }"
     
     resp = create_client(phone_number)
@@ -72,18 +74,18 @@ namespace :clients do
     resp.status_201?
   end
 
-  task create_fail_duplicate: :environment do
+  task create_fail_duplicate: :environment do |t|
     resp = create_client(ENV['PHONE_NUMBER'])
     resp.status_403?
   end
 
-  task create_fail_not_permission: :environment do
+  task create_fail_not_permission: :environment do |t|
     run('clients:login_success', true)
     resp = create_client("0128528#{ "%02d" % rand(1000..9999) }", false)
     resp.status_403?
   end
 
-  task simple_price_check: :environment do
+  task simple_price_check: :environment do |t|
     change_to_dev_server!
     (1..63).to_a.map { |id| { package_weight: "#{id}00", city_id: id } }.each do |params|
       p "Province #{fect_province_and_district_name({city_id: params[:city_id]})} is processing ..."
@@ -101,7 +103,7 @@ namespace :clients do
     success_msg('API external_clients/delivery/simple_price_check is OK')
   end
 
-  task price_check: :environment do
+  task price_check: :environment do |t|
     run('clients:login_success', true)
     @tolerance = 5 # minutes
     @test_validation = true

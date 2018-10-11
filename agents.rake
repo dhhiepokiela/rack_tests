@@ -7,15 +7,17 @@ END_DATE = Time.now.unix_time
 @order_codes_completed = []
 
 namespace :agents do
-  task all: :environment do
+  task all: :environment do |t|
+    starting(t)
     %w[01010101017 01248760542 01234567890 0898151235].each do |phone_number|
       agent_login(phone_number, '123456')
-      details_msg('Login agent user:', phone_number)
+      details_msg('Login agent user', phone_number)
       run('agents:orders_commission_tabs_correct')
     end
+    pass(t)
   end
 
-  task sample: :environment do
+  task sample: :environment do |t|
     # binding.pry
     # @user = get_logistic_user_by_phone(ENV['AGENT_PHONE'])
     # @order = Backend::App::Orders.by_id(544255)
@@ -23,18 +25,18 @@ namespace :agents do
     # logistic_dropoff_status_valid!(resp, %w[commissions_paid]) # Special case
   end
 
-  task orders_commission_tabs_correct: :environment do
-    change_to_dev_server!
+  task orders_commission_tabs_correct: :environment do |t|
+    starting(t)
     run('agents:orders_commission_processing_all', true)
     run('agents:orders_commission_completed_all', true)
 
-    success_msg("Tab Processing has #{@order_codes_processing.count} Orders")
-    success_msg("Tab Completed has #{@order_codes_completed.count} Orders")
+    details_msg('DEBUG', "Tab Processing has #{@order_codes_processing.count} Orders")
+    details_msg('DEBUG', "Tab Completed has #{@order_codes_completed.count} Orders")
 
     @completed_not_included_in_processing = @order_codes_processing.shuffle_contain(@order_codes_completed)
     @completed_included_in_processing = @completed_not_included_in_processing.shuffle_contain(@order_codes_completed)
     if @completed_included_in_processing.empty?
-      success_msg('PASS: orders_commission_tabs_correct')
+      pass(t)
     else
       error_msg("\nFAIL: orders_commission_tabs_correct")
       details_msg('@completed_not_included_in_processing', @completed_not_included_in_processing)
@@ -45,7 +47,8 @@ namespace :agents do
     end
   end
 
-  task orders_commission_completed_all: :environment do
+  task orders_commission_completed_all: :environment do |t|
+    starting(t)
     results = { count: 0, codes: [] }
 
     resp = get_agent_orders(START_DATE, END_DATE, 'completed', 'agents_all', 0, 100)
@@ -63,7 +66,7 @@ namespace :agents do
     # success_msg("Orders #{resp['orders']['items'].count} when completed and agents_dropoff_order")
 
     if @order_codes_completed.shuffle_contain_each_other?(results[:codes])
-      success_msg('PASS: orders_commission_completed_all')
+      pass(t)
     else
       tabs_not_include_all = @order_codes_completed.shuffle_contain(results[:codes])
       all_not_include_tabs = results[:codes].shuffle_contain(@order_codes_completed)
@@ -74,7 +77,8 @@ namespace :agents do
     end
   end
 
-  task orders_commission_processing_all: :environment do
+  task orders_commission_processing_all: :environment do |t|
+    starting(t)
     results = { count: 0, codes: [] }
     
     resp = get_agent_orders(START_DATE, END_DATE, 'processing', 'agents_all', 0, 100)
@@ -107,7 +111,7 @@ namespace :agents do
     # success_msg("Orders #{resp['orders']['items'].count} when completed and agents_money_received")
 
     if @order_codes_processing.shuffle_contain_each_other?(results[:codes])
-      success_msg('PASS: orders_commission_processing_all')
+      pass(t)
     else
       tabs_not_include_all = @order_codes_processing.shuffle_contain(results[:codes])
       all_not_include_tabs = results[:codes].shuffle_contain(@order_codes_processing)
@@ -118,17 +122,21 @@ namespace :agents do
     end
   end
 
-  task orders_commission_processing: :environment do
+  task orders_commission_processing: :environment do |t|
+    starting(t)
     resp = get_agent_orders(START_DATE, END_DATE, 'processing', 'agents_dropoff_order', 0, 15)
     resp.status_200?
     order_status_valid!(resp, %w[processing pending_canceled])
+    pass(t)
   end
 
-  task orders_commission_agents_money_received: :environment do
+  task orders_commission_agents_money_received: :environment do |t|
+    starting(t)
     resp = get_agent_orders(START_DATE, END_DATE, 'processing', 'agents_money_received', 0, 15)
     resp.status_200?
     order_status_valid!(resp, %w[processing pending_canceled])
     logistic_order_status_valid!(resp, %w[money_received])
+    pass(t)
   end
 
   def get_agent_orders(start_date, end_date, order_status_type = '', order_type = '', offset = 0, limit = 15)

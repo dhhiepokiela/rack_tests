@@ -1,12 +1,12 @@
 require_relative 'environment.rb'
 
 namespace :exports do
-  task admin_dashboard_login: :environment do
+  task admin_dashboard_login: :environment do |t|
     resp = dashboard_logistic_login!
     resp.status_200?
   end
 
-  task export_order: :environment do
+  task export_order: :environment do |t|
     change_to_dev_server!
     run('exports:admin_dashboard_login', true)
     change_to_local_server!

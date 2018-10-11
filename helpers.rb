@@ -135,36 +135,36 @@ HTTParty::Response.class_eval do
 end
 
 def client_login(phone, password)
-  change_to_dev_server!
+  # change_to_dev_server!
   data =
     post('auth/login_client', {
       phone: phone, 
       password: password
     }).store_api_token_and_return
-  change_to_local_server!
+  # change_to_local_server!
   data
 end
 
 def logistic_login(phone, password)
-  change_to_dev_server!
+  # change_to_dev_server!
   data =
     post('auth/login_logistic', {
       phone: phone, 
       password: password
     }).store_api_token_and_return
-  change_to_local_server!
+  # change_to_local_server!
   data
 end
 
 def agent_login(phone, password)
-  change_to_dev_server!
+  # change_to_dev_server!
   data =
     post('auth/login_agent', {
       phone: phone,
       password: password,
       login_type: 'swagger_agent'
     }).store_api_token_and_return
-  change_to_local_server!
+  # change_to_local_server!
   data
 end
 
@@ -173,11 +173,7 @@ def dashboard_logistic_login!
 end
 
 def login_agent!
-  # KP 1 Thị Xã Thủ Dầu Một Phường Định Hòa Bình Dương
-  # agent_login(ENV['AGENT_PHONE'], '111111')
-  agent_login('01010101017', '123456')
-  # agent_login('01248760542', '123456')
-  # agent_login('01234567890', '123456')
+  agent_login(ENV['AGENT_PHONE'], ENV['AGENT_PASS'])
 end
 
 def get_logistic_user_by_phone(phone)
@@ -226,12 +222,18 @@ def error_msg_inline(msg = '')
   print msg.colorize(:red)
 end
 
+def starting(task_name)
+  success_msg("\n- - - - - - - - - @ @ @ - - - - - - - - -")
+  success_msg("# # # Task #{task_name} is STARTING # # #")
+end
+
 def pass(task_name)
-  success_msg("Task #{task_name} was PASSED")
+  success_msg("\n# # # Task #{task_name} was PASSED # # #")
+  success_msg("- - - - - - - - - @ @ @ - - - - - - - - -\n")
 end
 
 def failure(task_name, description = nil)
-  msg = ['Task #{task_name} was FAILED']
+  msg = ["Task #{task_name} was FAILED"]
   msg << "Description: #{description}" if description.present?
   error_msg(msg.join('. '))
 end
