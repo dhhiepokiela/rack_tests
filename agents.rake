@@ -38,7 +38,7 @@ namespace :agents do
     if @completed_included_in_processing.empty?
       pass(t)
     else
-      error_msg("\nFAIL: orders_commission_tabs_correct")
+      failure(t)
       details_msg('@completed_not_included_in_processing', @completed_not_included_in_processing)
       details_msg('@completed_included_in_processing', "#{@completed_included_in_processing} - Size: #{@completed_included_in_processing.count}")
       info_msg("\nDETAILS:")
@@ -71,9 +71,9 @@ namespace :agents do
       tabs_not_include_all = @order_codes_completed.shuffle_contain(results[:codes])
       all_not_include_tabs = results[:codes].shuffle_contain(@order_codes_completed)
       txt = []
-      txt << "1: #{tabs_not_include_all}" if tabs_not_include_all.any?
-      txt << "2: #{all_not_include_tabs}" if all_not_include_tabs.any?
-      error_msg("FAIL: orders_commission_completed_all - #{txt.join(' - - - ')}")
+      txt << "\ntabs_not_include_all: #{tabs_not_include_all}" if tabs_not_include_all.any?
+      txt << "\nall_not_include_tabs: #{all_not_include_tabs}" if all_not_include_tabs.any?
+      failure(t, txt.join(' - - - '))
     end
   end
 
@@ -116,9 +116,9 @@ namespace :agents do
       tabs_not_include_all = @order_codes_processing.shuffle_contain(results[:codes])
       all_not_include_tabs = results[:codes].shuffle_contain(@order_codes_processing)
       txt = []
-      txt << "1: #{tabs_not_include_all}" if tabs_not_include_all.any?
-      txt << "2: #{all_not_include_tabs}" if all_not_include_tabs.any?
-      error_msg("FAIL: orders_commission_processing_all - #{txt.join(' - - - ')}")
+      txt << "\ntabs_not_include_all: #{tabs_not_include_all}" if tabs_not_include_all.any?
+      txt << "\nall_not_include_tabs: #{all_not_include_tabs}" if all_not_include_tabs.any?
+      failure(t, txt.join(' - - - '))
     end
   end
 

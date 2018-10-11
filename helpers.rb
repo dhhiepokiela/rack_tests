@@ -57,14 +57,14 @@ def debug_mode?
   ENV['DEBUG_MODE'] == true
 end
 
-def run(task_name, sub_task = false)
+def run(task, sub_task = false)
   if sub_task
-    puts "~~>> SUB TASK: #{task_name.upcase}".colorize(:light_magenta)
+    puts "~~>> SUB TASK: #{task.upcase}".colorize(:light_magenta)
   else
-    puts "= = = = = #{task_name.upcase} IS RUNNING ON SERVER #{ENV['BASE_URL_API']} ... = = = = =".colorize(:cyan)
+    # puts "= = = = = #{task.upcase} IS RUNNING ON SERVER #{ENV['BASE_URL_API']} ... = = = = =".colorize(:cyan)
   end
-  Rake::Task[task_name].reenable
-  Rake::Task[task_name].invoke
+  Rake::Task[task].reenable
+  Rake::Task[task].invoke
 end
 
 def change_to_local_server!
@@ -73,6 +73,16 @@ end
 
 def change_to_dev_server!
   ENV['BASE_URL_API'] = ENV['DEV_BASE_URL_API']
+end
+
+def set_default_server!
+  ENV['BASE_URL_API'] = 
+    case ENV['MODE'].to_s.downcase
+    when 'dev'
+      ENV['DEV_BASE_URL_API']
+    else
+      ENV['LOCAL_BASE_URL_API']
+    end
 end
 
 HTTParty::Response.class_eval do
@@ -135,37 +145,41 @@ HTTParty::Response.class_eval do
 end
 
 def client_login(phone, password)
-  # change_to_dev_server!
+  change_to_dev_server! if login_on_dev?
   data =
     post('auth/login_client', {
       phone: phone, 
       password: password
     }).store_api_token_and_return
-  # change_to_local_server!
+  set_default_server!
   data
 end
 
 def logistic_login(phone, password)
-  # change_to_dev_server!
+  change_to_dev_server! if login_on_dev?
   data =
     post('auth/login_logistic', {
       phone: phone, 
       password: password
     }).store_api_token_and_return
-  # change_to_local_server!
+  set_default_server!
   data
 end
 
 def agent_login(phone, password)
-  # change_to_dev_server!
+  change_to_dev_server! if login_on_dev?
   data =
     post('auth/login_agent', {
       phone: phone,
       password: password,
       login_type: 'swagger_agent'
     }).store_api_token_and_return
-  # change_to_local_server!
+  set_default_server!
   data
+end
+
+def login_on_dev?
+  ENV['LOGIN_ON_DEV'] == 'true'
 end
 
 def dashboard_logistic_login!
@@ -222,20 +236,21 @@ def error_msg_inline(msg = '')
   print msg.colorize(:red)
 end
 
-def starting(task_name)
-  success_msg("\n- - - - - - - - - @ @ @ - - - - - - - - -")
-  success_msg("# # # Task #{task_name} is STARTING # # #")
+def starting(task)
+  puts "\n> > > > > > > > > > > > > > > > > > + + + > > > > > > > > > > > > > > > > > >".colorize(:cyan)
+  success_msg("# # # Task ##{Digest::MD5.hexdigest(task.__id__.to_s)[0..4].upcase} - #{task} is STARTING ON SERVER #{ENV['BASE_URL_API']} # # #")
 end
 
-def pass(task_name)
-  success_msg("\n# # # Task #{task_name} was PASSED # # #")
-  success_msg("- - - - - - - - - @ @ @ - - - - - - - - -\n")
+def pass(task)
+  puts "\n< < < < < < < < < < < < < < < < < < @ @ @ < < < < < < < < < < < < < < < < < <".colorize(:light_red)
+  success_msg("# # # Task ##{Digest::MD5.hexdigest(task.__id__.to_s)[0..4].upcase} - #{task} was PASSED ON SERVER #{ENV['BASE_URL_API']}  # # #")
 end
 
-def failure(task_name, description = nil)
-  msg = ["Task #{task_name} was FAILED"]
-  msg << "Description: #{description}" if description.present?
-  error_msg(msg.join('. '))
+def failure(task, description = nil)
+  puts "\n< < < < < < < < < < < < < < < < < < @ @ @ < < < < < < < < < < < < < < < < < <".colorize(:light_red)
+  error_msg("# # # Task ##{Digest::MD5.hexdigest(task.__id__.to_s)[0..4].upcase} - #{task} was FAILED # # #")
+  details_msg('Details', "#{description}") if description.present?
+  puts ''
 end
 
 def force_reset_default_password_by_phone(phone)
