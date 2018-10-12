@@ -54,3 +54,5 @@ environment.rb
 data_logs
 db_actions.rake
 console_v2.rake
+
+*.log

@@ -121,12 +121,12 @@ HTTParty::Response.class_eval do
 
   def include?(arr, element)
     return true if arr.include?(element)
-    raise "Value was expected must include in: #{arr} but value got: #{value}".colorize(:red)
+    raise "Value was expected must include in: #{arr} but element got: #{element}".colorize(:red)
   end
 
   def not_include?(arr, element)
     return true unless arr.include?(element)
-    raise "Value was expected must not include in: #{arr} but value got: #{value}".colorize(:red)
+    raise "Value was expected must not include in: #{arr} but element got: #{element}".colorize(:red)
   end
 
   def lt?(v1, v2)
@@ -285,7 +285,6 @@ end
 def ssh_exec(host, user, exe_commands = [], debug = true)
   server_name = "SERVER #{host.upcase}"
   success_msg("\n= = = = = #{server_name} START OUTPUT = = = = =\n")
-  details_msg(server_name, "Connection is establishing ...")
 
   @telnet_connection =
     if host == 'dev1'
@@ -294,16 +293,20 @@ def ssh_exec(host, user, exe_commands = [], debug = true)
       @ssh_dev2
     end
 
-  if @telnet_connection.nil?
+  if @telnet_connection.present?
+    details_msg(server_name, "Using last session ...")
+  else
+    details_msg(server_name, "Connection is establishing ...")
     ssh_connection = Net::SSH.start(host, user)
     @telnet_connection = Net::SSH::Telnet.new(
       'Session' => ssh_connection,
-      'Dump_log' => 'dump.log',
-      'Output_log' => 'output.log',
-      'Timeout' => 5 * 60, # seconds
+      'Dump_log' => './rake_tests/dump.log',
+      'Output_log' => './rake_tests/rakoutput.log',
+      'Timeout' => 10 * 60, # seconds
       'Waittime' => 3, # seconds
       'Terminator' => "\r"
     )
+    details_msg(server_name, "Connection was established")
 
     if host == 'dev1'
       @ssh_dev1 = @telnet_connection
@@ -312,7 +315,6 @@ def ssh_exec(host, user, exe_commands = [], debug = true)
     end
   end
 
-  details_msg(server_name, "Connection was established")
   exe_commands.each_with_index do |command, index|
     output = @telnet_connection.cmd(command)
     next unless debug
@@ -330,26 +332,36 @@ end
 
 def run_sys_cmd(commands, ssh_servers = ['dev1', 'dev2'], sudo = true)
   if environment_dev?
-    base = ['cd ~/trendu_backend', 'pwd']
-    base << 'sudo -s' if sudo
-    commands = [base, commands].flatten
-    ssh_dev1_exec(commands) if ssh_servers.include?('dev1')
-    ssh_dev2_exec(commands) if ssh_servers.include?('dev2')
+    base_commands = []
+    if @ssh_dev1.blank? || @ssh_dev2.blank? # last session was do base_commands commands
+      base_commands = ['cd ~/trendu_backend', 'pwd']
+      base_commands << 'sudo -s' if sudo
+    end
+
+    ssh_dev1_exec([base_commands, commands].flatten) if ssh_servers.include?('dev1')
+    ssh_dev2_exec([base_commands, commands].flatten) if ssh_servers.include?('dev2')
   else
     commands.each do |command|
       %x( #{command} )
     end
+    # Open3.popen3(command) do |stdin, stdout, stderr, thread|
+    #   pid = thread.pid
+    #   stdout.read.chomp
+    #   puts "run_sys_cmd: #{pid} #{command}"
+    # end
   end
-  # Open3.popen3(command) do |stdin, stdout, stderr, thread|
-  #   pid = thread.pid
-  #   stdout.read.chomp
-  #   puts "run_sys_cmd: #{pid} #{command}"
-  # end
 end
 
 def delay(seconds)
   seconds.times do |i|
     details_msg("INFO", "System will be continue in #{seconds - i} second(s)")
     sleep(1)
+  end
+end
+
+def check_and_delete_order_on_es(order_id)
+  unless (Backend::App::Orders.by_id(order_id, true).id rescue nil)
+    details_msg('SYSTEM', "Removing order ##{order_id} on ES")
+    HTTParty.delete("http://api-online-dev.okiela.com:9200/okiela/order/#{order_id}")
   end
 end

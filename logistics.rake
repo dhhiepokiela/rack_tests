@@ -183,8 +183,30 @@ namespace :logistics do
     items = resp['orders']['items']
     details_msg('INFO', "Got #{items.count} with flags is #{flags.join(', ')} and status is #{statuses.join(', ')}")
     items.each do |item|
-      resp.include?(flags, item['okiela_24_7_nationwide_flag']) if flags.any?
-      resp.include?(statuses, item['logistic_order_status']) if statuses.any?
+      if flags.any?
+        if item['okiela_24_7_nationwide_flag'].present?
+          begin
+            resp.include?(flags, item['okiela_24_7_nationwide_flag'])
+          rescue Exception => e
+            error_msg("Value got #{item['okiela_24_7_nationwide_flag']} when check item #{item['id']} in #{flags}")
+            check_and_delete_order_on_es(item['id'])
+          end
+        else
+          error_msg("Value got nil when check item #{item['id']} in #{flags}")
+        end
+      end
+      if statuses.any?
+        if item['logistic_order_status'].present?
+          begin
+            resp.include?(statuses, item['logistic_order_status'])
+          rescue Exception => e
+            error_msg("Value got #{item['logistic_order_status']} when check item #{item['id']} in #{statuses}")
+            check_and_delete_order_on_es(item['id'])
+          end
+        else
+          error_msg("Value got nil when check item #{item['id']} in #{statuses}")
+        end
+      end
     end
   end
 
@@ -247,6 +269,7 @@ namespace :logistics do
 
         order.deactivate
         order.delete_order
+        check_and_delete_order_on_es(order_id)
         sleep 3
       rescue
         puts order_id
