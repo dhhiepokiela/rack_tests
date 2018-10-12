@@ -30,9 +30,7 @@ def build_headers(include_api = true)
 end
 
 def api_token
-  {
-    'Auth-Token' => ENV['Auth-Token'],
-  }
+  api_secret.merge('Auth-Token' => ENV['Auth-Token'])
 end
 
 def api_secret
@@ -83,6 +81,10 @@ def set_default_server!
     else
       ENV['LOCAL_BASE_URL_API']
     end
+end
+
+def environment_dev?
+  ENV['MODE'].to_s.downcase == 'dev'
 end
 
 HTTParty::Response.class_eval do
@@ -237,19 +239,19 @@ def error_msg_inline(msg = '')
 end
 
 def starting(task)
-  puts "\n> > > > > > > > > > > > > > > > > > + + + > > > > > > > > > > > > > > > > > >".colorize(:cyan)
+  puts "> > > > > > > > > > > > > > > > > > + + + > > > > > > > > > > > > > > > > > >".colorize(:cyan)
   success_msg("# # # Task ##{Digest::MD5.hexdigest(task.__id__.to_s)[0..4].upcase} - #{task} is STARTING ON SERVER #{ENV['BASE_URL_API']} # # #")
 end
 
 def pass(task)
-  puts "\n< < < < < < < < < < < < < < < < < < @ @ @ < < < < < < < < < < < < < < < < < <".colorize(:light_red)
+  puts "< < < < < < < < < < < < < < < < < < @ @ @ < < < < < < < < < < < < < < < < < <".colorize(:light_red)
   success_msg("# # # Task ##{Digest::MD5.hexdigest(task.__id__.to_s)[0..4].upcase} - #{task} was PASSED ON SERVER #{ENV['BASE_URL_API']}  # # #")
 end
 
 def failure(task, description = nil)
-  puts "\n< < < < < < < < < < < < < < < < < < @ @ @ < < < < < < < < < < < < < < < < < <".colorize(:light_red)
+  puts "< < < < < < < < < < < < < < < < < < @ @ @ < < < < < < < < < < < < < < < < < <".colorize(:light_red)
   error_msg("# # # Task ##{Digest::MD5.hexdigest(task.__id__.to_s)[0..4].upcase} - #{task} was FAILED # # #")
-  details_msg('Details', "#{description}") if description.present?
+  details_msg('Details', "#{description}\n") if description.present?
   puts ''
 end
 
@@ -272,3 +274,82 @@ def execute_sql(sql)
   db_connection.query(sql: sql)
 end
 
+def ssh_dev1_exec(exe_commands = [], debug = true)
+  ssh_exec('dev1', 'dev', exe_commands, debug)
+end
+
+def ssh_dev2_exec(exe_commands = [], debug = true)
+  ssh_exec('dev2', 'dev', exe_commands, debug)
+end
+
+def ssh_exec(host, user, exe_commands = [], debug = true)
+  server_name = "SERVER #{host.upcase}"
+  success_msg("\n= = = = = #{server_name} START OUTPUT = = = = =\n")
+  details_msg(server_name, "Connection is establishing ...")
+
+  @telnet_connection =
+    if host == 'dev1'
+      @ssh_dev1
+    else
+      @ssh_dev2
+    end
+
+  if @telnet_connection.nil?
+    ssh_connection = Net::SSH.start(host, user)
+    @telnet_connection = Net::SSH::Telnet.new(
+      'Session' => ssh_connection,
+      'Dump_log' => 'dump.log',
+      'Output_log' => 'output.log',
+      'Timeout' => 5 * 60, # seconds
+      'Waittime' => 3, # seconds
+      'Terminator' => "\r"
+    )
+
+    if host == 'dev1'
+      @ssh_dev1 = @telnet_connection
+    else
+      @ssh_dev2 = @telnet_connection
+    end
+  end
+
+  details_msg(server_name, "Connection was established")
+  exe_commands.each_with_index do |command, index|
+    output = @telnet_connection.cmd(command)
+    next unless debug
+    info_msg("\n#{server_name} execute \"#{command}\" (#{index + 1} of #{exe_commands.count})")
+    puts output
+  end
+  success_msg("\n= = = = = SSH #{host.upcase} END OUTPUT = = = = =\n")
+  # @telnet_connection.close
+end
+
+def sync_es
+  details_msg('Action', 'Sync Orders to ES ...')
+  run_sys_cmd(['rake elasticsearch:resync_fail_orders'])
+end
+
+def run_sys_cmd(commands, ssh_servers = ['dev1', 'dev2'], sudo = true)
+  if environment_dev?
+    base = ['cd ~/trendu_backend', 'pwd']
+    base << 'sudo -s' if sudo
+    commands = [base, commands].flatten
+    ssh_dev1_exec(commands) if ssh_servers.include?('dev1')
+    ssh_dev2_exec(commands) if ssh_servers.include?('dev2')
+  else
+    commands.each do |command|
+      %x( #{command} )
+    end
+  end
+  # Open3.popen3(command) do |stdin, stdout, stderr, thread|
+  #   pid = thread.pid
+  #   stdout.read.chomp
+  #   puts "run_sys_cmd: #{pid} #{command}"
+  # end
+end
+
+def delay(seconds)
+  seconds.times do |i|
+    details_msg("INFO", "System will be continue in #{seconds - i} second(s)")
+    sleep(1)
+  end
+end
