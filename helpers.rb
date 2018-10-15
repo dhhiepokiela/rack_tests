@@ -146,6 +146,17 @@ HTTParty::Response.class_eval do
   end
 end
 
+def user_login(phone, password)
+  change_to_dev_server! if login_on_dev?
+  data =
+    post('auth/login', {
+      phone: phone, 
+      password: password
+    }).store_api_token_and_return
+  set_default_server!
+  data
+end
+
 def client_login(phone, password)
   change_to_dev_server! if login_on_dev?
   data =
