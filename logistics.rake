@@ -85,6 +85,7 @@ namespace :logistics do
     starting(t)
     details_msg("\nAction", 'Database is restoring ...')
     @after_restore = restore_logistic_order_status(@backup_order_status)
+    delay(30)
     sync_es
     get('').eq?(@backup_order_status, @after_restore)
     pass(t)
@@ -107,10 +108,11 @@ namespace :logistics do
     resp = put('logistics/orders/multi_send_to_nationwide', params, api_token)
     resp.status_200?
 
+    delay(15)
     details_msg('Action', 'Calling task \'rake job_queues:process\' ...')
     run_sys_cmd(['rake job_queues:process'])
+    delay(45)
     sync_es
-    # delay(30)
 
     details_msg('Action', 'Process and checking to ensure data valid ...')
     JSON.parse(params[:order_code_list], symbolize_names: true).each do |item|
