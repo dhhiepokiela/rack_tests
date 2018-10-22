@@ -7,6 +7,7 @@ namespace :clients do
     run('clients:login_failure_wrong_pass')
     run('clients:change_password')
     run('clients:create_success')
+    run('clients:create_success_with_flag_change_password')
     run('clients:create_fail_duplicate')
     run('clients:create_fail_not_permission')
     run('clients:price_check')
@@ -65,13 +66,38 @@ namespace :clients do
   end
 
   task create_success: :environment do |t|
-    phone_number = "0128528#{ "%02d" % rand(1000..9999) }"
+    phone_number = "078528#{ "%02d" % rand(1000..9999) }"
     
     resp = create_client(phone_number)
     resp.status_200?
+    
     force_reset_default_password_by_phone(phone_number) # 123456
     resp = client_login(phone_number, ENV['DEFAULT_PASSWORD'])
     resp.status_201?
+    resp.eq?(resp['notifications']['hint'], 'need_change_password')
+
+    resp = put('auth/change-password', {phone: phone_number, old_password: ENV['DEFAULT_PASSWORD'], new_password: ENV['NEW_PASSWORD']}, api_token)
+    resp.status_201?
+
+    resp = put('auth/change-password', {phone: phone_number, old_password: ENV['NEW_PASSWORD'], new_password: ENV['DEFAULT_PASSWORD']}, api_token)
+    resp.status_201?
+    
+    resp = client_login(phone_number, ENV['DEFAULT_PASSWORD'])
+    resp.eq?(resp['notifications']['hint'].blank?, true)
+    resp.status_200?
+  end
+
+  task create_success_with_flag_change_password: :environment do |t|
+    phone_number = "078528#{ "%02d" % rand(1000..9999) }"
+    # phone_number = "0907955005"
+    
+    resp = create_client(phone_number)
+    resp.status_200?
+
+    force_reset_default_password_by_phone(phone_number) # 123456
+    resp = client_login(phone_number, ENV['DEFAULT_PASSWORD'])
+    resp.status_201?
+    resp.eq?(resp['notifications']['hint'], 'need_change_password')
   end
 
   task create_fail_duplicate: :environment do |t|
@@ -81,7 +107,7 @@ namespace :clients do
 
   task create_fail_not_permission: :environment do |t|
     run('clients:login_success', true)
-    resp = create_client("0128528#{ "%02d" % rand(1000..9999) }", false)
+    resp = create_client("078528#{ "%02d" % rand(1000..9999) }", false)
     resp.status_403?
   end
 
@@ -220,10 +246,10 @@ namespace :clients do
       build_test_data_json({ # Châu Đốc
         district_id: 564,
         province_id: 50,
-        normal_cost_level_1: 26300,
-        normal_cost_level_2: 30700,
-        normal_cost_level_3: 35100,
-        normal_cost_level_4: 39500,
+        normal_cost_level_1: 23800,
+        normal_cost_level_2: 28200,
+        normal_cost_level_3: 32600,
+        normal_cost_level_4: 37000,
         normal_cost_extra: 4400,
         fast_cost_level_1: 43800,
         fast_cost_level_2: 54100,
@@ -231,7 +257,7 @@ namespace :clients do
         fast_cost_level_4: 74400,
         fast_cost_extra: 4300,
         custom_package_weight: 20,
-        custom_normal_cost_expect: 39500 + 4400 * 36,
+        custom_normal_cost_expect: 37000 + 4400 * 36,
         custom_fast_cost_expect: 74400 + 4300 * 36,
         normal_deliver_time: '24-48|48-72',
         fast_deliver_time: '24-48|48-72'
@@ -241,10 +267,10 @@ namespace :clients do
       build_test_data_json({ # Châu Thành A - Hậu Giang
         district_id: 686,
         province_id: 63,
-        normal_cost_level_1: 36300,
-        normal_cost_level_2: 40700,
-        normal_cost_level_3: 45100,
-        normal_cost_level_4: 49500,
+        normal_cost_level_1: 33800,
+        normal_cost_level_2: 38200,
+        normal_cost_level_3: 42600,
+        normal_cost_level_4: 47000,
         normal_cost_extra: 4400,
         fast_cost_level_1: 54900,
         fast_cost_level_2: 66900,
@@ -252,7 +278,7 @@ namespace :clients do
         fast_cost_level_4: 91300,
         fast_cost_extra: 4300,
         custom_package_weight: 19.5,
-        custom_normal_cost_expect: 49500 + 4400 * 35,
+        custom_normal_cost_expect: 47000 + 4400 * 35,
         custom_fast_cost_expect: 91300 + 4300 * 35,
         normal_deliver_time: '96-144|120-168',
         fast_deliver_time: '48-72|72-96'
@@ -262,10 +288,10 @@ namespace :clients do
       build_test_data_json({ # Tân Châu An Giang
         district_id: 566,
         province_id: 50,
-        normal_cost_level_1: 36300,
-        normal_cost_level_2: 40700,
-        normal_cost_level_3: 45100,
-        normal_cost_level_4: 49500,
+        normal_cost_level_1: 33800,
+        normal_cost_level_2: 38200,
+        normal_cost_level_3: 42600,
+        normal_cost_level_4: 47000,
         normal_cost_extra: 4400,
         fast_cost_level_1: 54900,
         fast_cost_level_2: 66900,
@@ -462,7 +488,7 @@ namespace :clients do
             resp.gt?(expected_deliver_max_time, test_case[:expected][key][:expected_deliver_max_time] - (@tolerance * 60 + 1))
           rescue Exception => e
             error_msg("Fail: #{e}")
-            binding.pry
+            # binding.pry
           end
         end
       end

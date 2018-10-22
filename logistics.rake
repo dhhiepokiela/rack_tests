@@ -16,6 +16,17 @@ namespace :logistics do
     resp.status_200?
   end
 
+  task load_orders_by_driver: :environment do |t|
+    starting(t)
+
+    [1, 2, 3, 5].each do |id|
+      phone = "089815710#{id}"
+      driver_id = Backend::App::LogisticUsers.by_parameters(phone: phone, limit: 1).id rescue nil
+      display_orders_by_driver(driver_id) if driver_id.present?
+    end
+    pass(t)
+  end
+
   task load_orders: :environment do |t|
     starting(t)
     limit = 500
@@ -46,6 +57,106 @@ namespace :logistics do
     success_msg("Test case pending_assign_not_payoo was PASSED")
 
     pass(t)
+  end
+
+  task manager_switch_pickup_driver: :environment do |t|
+    starting(t)
+    run('logistics:admin_dashboard_login', true)
+
+    driver_ids = [384702, 391455]
+    params = {
+      current_pickup_driver_id: driver_ids[0],
+      new_pickup_driver_id: driver_ids[1],
+      email: 'hoanghiepitvnn@gmail.com',
+      shop_ids: '1,2,3',
+      district_ids: '1,2,3'
+    }
+
+    details_msg('INFO', 'Run test case validation full district_ids and shop_ids')
+    resp = post('logistics/manager_switch_pickup_driver', params, api_token)
+    resp.status_403?
+
+    details_msg('INFO', 'Run test case validation missing district_ids and shop_ids')
+    resp = post('logistics/manager_switch_pickup_driver', params.except(:shop_ids, :district_ids), api_token)
+    resp.status_403?
+
+    reset_order_to_driver(
+      params[:current_pickup_driver_id],
+      %w[
+        MD892583 MD225583 MD032683 MD831983 MD942093 MD921193 
+        MD431193 MD137393 MD369393 MD179393 MD541024 MD612344
+        MD780824 MD992144 MD04029972 MD64029972 MD874355
+      ]
+    )
+
+    manager_switch_pickup_driver(shop_ids: '305666,381477') # Warehouse ID: 382230 - Shop ID: 381477 AND Warehouse ID: 305900 - Shop ID: 305666
+    manager_switch_pickup_driver(district_ids: '17,37') # Huyện Ba Vì AND quận 8
+
+    pass(t)
+  end
+
+  def manager_switch_pickup_driver(shop_ids: nil, district_ids: nil)
+      districts = Backend::App::MiscServices::LocationService.new.get_all_districts.inject({}){|r, e| r.merge(e["district_id"] => e["name"])}
+      driver_ids = [384702, 391455]
+      base_params = {
+        current_pickup_driver_id: driver_ids[0],
+        new_pickup_driver_id: driver_ids[1],
+        email: 'hoanghiepitvnn@gmail.com'
+      }
+
+      base_params.merge!(shop_ids: shop_ids) if shop_ids
+      base_params.merge!(district_ids: district_ids) if district_ids
+
+      details_msg("INFO", 'Switch PickupDriver Order parameter')
+      info_msg(base_params.to_s)
+
+      details_msg("INFO", 'Show current order on current driver and new driver')
+      driver_ids.each { |driver_id| display_orders_by_driver(driver_id) }
+
+      details_msg("ACTION", 'Backing up orders for current driver')
+      current_driver_orders_backups = get_orders_by_driver(base_params[:current_pickup_driver_id])
+      new_driver_orders_backups = get_orders_by_driver(base_params[:new_pickup_driver_id])
+      details_msg("ACTION", "Store current driver orders #{current_driver_orders_backups.count} orders")
+      details_msg("ACTION", "Store new driver orders #{new_driver_orders_backups.count} orders")
+
+      resp = post('logistics/manager_switch_pickup_driver', base_params, api_token)
+      resp.status_200?
+      delay(5)
+      details_msg("\n\nINFO", 'Execute rake job_queues:process')
+      run_sys_cmd(['rake job_queues:process'])
+      details_msg("\n\nINFO", 'Show current order on current driver and new driver')
+      driver_ids.each { |driver_id| display_orders_by_driver(driver_id) }
+      delay(5)
+
+      current_driver_orders = get_orders_by_driver(base_params[:current_pickup_driver_id])
+      new_driver_orders = get_orders_by_driver(base_params[:new_pickup_driver_id])
+      details_msg("ACTION", "Store current driver orders #{current_driver_orders.count} orders")
+      details_msg("ACTION", "Store new driver orders #{new_driver_orders.count} orders")
+
+      details_msg("\n\nINFO", "Checking new driver's orders (ID: #{base_params[:new_pickup_driver_id]})...")
+      resp.eq?(current_driver_orders_backups.count - current_driver_orders.count, new_driver_orders.count - new_driver_orders_backups.count)
+
+      details_msg("\n\nINFO", "Checking old driver's orders (ID: #{base_params[:current_pickup_driver_id]})...")
+      current_driver_orders.each do |order|
+        if shop_ids
+          details_msg("INFO", " - - Verify order #{order.code} base on shop_ids #{shop_ids}...")
+          resp.not_include?(shop_ids.split(',').map(&:to_i), order.shop_id)
+        end
+
+        if district_ids
+          details_msg("INFO", " - - Verify order #{order.code} base on district_ids #{district_ids}...")
+          district_names = district_ids.split(',').map{|e| districts[e.to_i] }
+          district_name = order.shop_dropoff_obj.address.district rescue nil
+          resp.not_include?(district_names, district_name)
+        end
+      end
+
+      details_msg("ACTION", 'Restoring orders for current driver')
+      reset_order_to_driver(base_params[:current_pickup_driver_id], current_driver_orders_backups.map(&:code))
+      resp.eq?(current_driver_orders_backups.map(&:id), get_orders_by_driver(base_params[:current_pickup_driver_id]).map(&:id))
+
+      details_msg("INFO", 'Show current order on current driver and new driver')
+      driver_ids.each { |driver_id| display_orders_by_driver(driver_id) }
   end
 
   task multi_send_to_nationwide: :environment do |t|
@@ -597,6 +708,24 @@ namespace :logistics do
     ]'
   end
 
+  def get_orders_by_driver(driver_id)
+    Backend::App::Orders.by_parameters(
+      order_status: [ORDER_STATUS[:processing], ORDER_STATUS[:pending_canceled]],
+      logistic_order_status: LOGISTIC_ORDER_STATUS[:seller_confirmed],
+      logistic_pickup_driver: driver_id, limit: false
+    )
+  end
+
+  def display_orders_by_driver(driver_id, phone = nil)
+    orders = get_orders_by_driver(driver_id)
+    details_msg("INFO", "Driver with phone #{phone} (#{driver_id}) has #{orders.count} orders")
+    orders.each do |order|
+      district_name = order.shop_dropoff_obj.address.district rescue nil
+      details_msg("Details", "Order #{order.code} - District #{district_name} - Warehouse ID: #{order.shop_dropoff} - Shop ID: #{order.shop_id}")
+    end
+    info_msg("===\n")
+  end
+
   def clean_orders
     sql = 
       <<-SQL
@@ -624,5 +753,24 @@ namespace :logistics do
         puts order_id
       end
     end
+  end
+
+  def reset_order_to_driver(driver_id, orders)
+    # current_driver_orders_backups.map(&:id).each do |code|
+    #   order = Backend::App::Orders.by_id(code, true)
+    #   order.pickup_driver = base_params[:current_pickup_driver_id]
+    #   order.save
+    # end
+
+    sql =
+      <<-SQL
+        update res_order
+        set es_synced = 0, 
+            pickup_driver = #{driver_id}
+        where code IN (#{orders.inject([]){|a, e| a << ("'#{e}'")}.join(',')})
+      SQL
+
+    execute_sql(sql)
+    sync_es
   end
 end

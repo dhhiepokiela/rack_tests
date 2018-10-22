@@ -146,6 +146,13 @@ HTTParty::Response.class_eval do
   end
 end
 
+# {
+#   user_login: 'login',
+#   client_login: 'login_client',
+#   logistic_login: 'login_logistic',
+#   agent_login: 'login_agent',
+# }.each do ||
+
 def user_login(phone, password)
   change_to_dev_server! if login_on_dev?
   data =
@@ -341,7 +348,7 @@ def sync_es
   run_sys_cmd(['rake elasticsearch:resync_fail_orders'])
 end
 
-def run_sys_cmd(commands, ssh_servers = ['dev1', 'dev2'], sudo = true)
+def run_sys_cmd(commands, ssh_servers: ['dev1', 'dev2'], sudo: true)
   if environment_dev?
     base_commands = []
     if @ssh_dev1.blank? || @ssh_dev2.blank? # last session was do base_commands commands
