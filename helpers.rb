@@ -321,7 +321,7 @@ def ssh_exec(host, user, exe_commands = [], debug = true)
       'Dump_log' => './rake_tests/dump.log',
       'Output_log' => './rake_tests/rakoutput.log',
       'Timeout' => 10 * 60, # seconds
-      'Waittime' => 3, # seconds
+      'Waittime' => 1.5, # seconds
       'Terminator' => "\r"
     )
     details_msg(server_name, "Connection was established")
@@ -346,6 +346,11 @@ end
 def sync_es
   details_msg('Action', 'Sync Orders to ES ...')
   run_sys_cmd(['rake elasticsearch:resync_fail_orders'])
+end
+
+def irb_cmd(commands, ssh_servers: %w[dev1 dev2])
+  commands = ['irb', "require './app.rb'"].concat(commands)
+  run_sys_cmd(commands, ssh_servers: ssh_servers)
 end
 
 def run_sys_cmd(commands, ssh_servers: ['dev1', 'dev2'], sudo: true)

@@ -89,7 +89,7 @@ namespace :clients do
 
   task create_success_with_flag_change_password: :environment do |t|
     phone_number = "078528#{ "%02d" % rand(1000..9999) }"
-    # phone_number = "0907955005"
+    phone_number = '0386222225'    
     
     resp = create_client(phone_number)
     resp.status_200?
