@@ -8,6 +8,31 @@ namespace :auth do
     run('auth:agent_login')
   end
 
+  task force_logout: :environment do |t|
+    starting(t)
+    user = Backend::App::Users.by_parameters(phone: '0898157886', limit: 1)
+    details_msg('INFO', 'Login ...')
+    resp = user_login(user.phone, '123456')
+    resp.status_200?
+
+    details_msg('INFO', 'Auth success ...')
+    resp = get('auth', {}, api_token)
+    resp.status_200?
+
+    Backend::App::MiscServices::ForceLogout.force_logout!(user)
+
+    details_msg('INFO', 'Auth failed ...')
+    resp = get('auth', {}, api_token)
+    resp.status_403?
+
+    # Reset after trigger logout
+    details_msg('INFO', 'Auth success ...')
+    resp = get('auth', {}, api_token)
+    resp.status_200?
+    
+    pass(t)
+  end
+
   task user_login: :environment do |t|
     starting(t)
     details_msg('INFO', 'Login user with 11 digits ...')
