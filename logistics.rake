@@ -1,8 +1,5 @@
 require_relative 'environment.rb'
 
-@backup_order_status = []
-@after_restore = []
-
 namespace :logistics do
   task all: :environment do |t|
     starting(t)
@@ -16,6 +13,53 @@ namespace :logistics do
     resp.status_200?
   end
 
+  task manager_update_package_weight: :environment do |t|
+    starting(t)
+    run('logistics:admin_dashboard_login', true)
+
+    details_msg("\nSTEP", 'VALIDATION CHECKING ...')
+    # 'Danh sách đơn hàng không được phép để trống.'
+    # 'Danh sách đơn hàng không hợp lệ'
+    # 'Email không được phép để trống khi có nhiều hơn một đơn hàng'
+  
+    fields = %w[entity_id code delivery_original_price okiela_24_7_delivery_fee okiela_24_7_shipping_fee final_order_discount final_price final_price_after_tax]
+    codes = %w[MD20031082 MD200310822]
+    # codes.concat %w[MD734385 MD044385 MD654385 MD954385 MD264385 MD564385 MD864385 MD374385 MD674385 MD974385 MD284385 MD094385 MD394385 MD694385 MD994385 MD205385 MD505385 MD425385 MD725385 MD035385]
+
+    codes.concat %w[MD92821082]
+
+
+    old_orders = load_order_fee(fields, codes)
+    old_weights = load_order_weight(codes)
+    display_order_fee(fields, old_orders, old_weights)
+    list_orders =
+      codes.map do |code|
+        "{\"code\": \"#{code}\", \"weight\": \"#{old_weights[code].to_i + 100}\"}"
+      end.join(',')
+
+    resp = post('logistics/manager_update_package_weight', { email: 'hoanghiepitvnn@gmail.com', list_orders: "[#{list_orders}]" }, api_token)
+    resp.status_200?
+
+    details_msg("\n\nINFO", 'Execute rake job_queues:process')
+    run_sys_cmd(['rake job_queues:process'])
+
+    pass(t)
+  end
+
+  task update_dropoff_owner: :environment do |t|
+    starting(t)
+
+    run('logistics:admin_dashboard_login', true)
+
+    details_msg("\nAction", 'Sending request to server update_dropoff_owner')
+    phone_number = "078528#{ "%02d" % rand(1000..9999) }"
+    resp = put('logistics/update_dropoff_owner', { dropoff_location_id: '28013536', dropoff_owner_id: '28013549', phone: phone_number }, api_token)
+    resp.status_200?
+    dropoff_owner = Backend::App::LogisticUsers.by_id('28013549', true)
+    resp.eq?(dropoff_owner.phone, phone_number)
+    pass(t)
+  end 
+
   task load_orders_by_driver: :environment do |t|
     starting(t)
 
@@ -25,6 +69,20 @@ namespace :logistics do
       display_orders_by_driver(driver_id) if driver_id.present?
     end
     pass(t)
+
+    # db = SequelDbConnection.get_connector
+    # user = nil
+    # db.transaction do
+    #   user = Backend::App::Users.by_parameters(phone: '0785286828')
+    #   details_msg("INFO", "Name 1: #{Backend::App::Users.by_id(user.id, true).forename}")
+    #   user.forename = 'Test'
+    #   user.save
+    #   ddd
+    #   details_msg("INFO", "Name 2: #{Backend::App::Users.by_id(user.id, true).forename}")
+    #   raise(Sequel::Rollback)
+    # end
+    # details_msg("INFO", "Name 3: #{Backend::App::Users.by_id(user.id, true).forename}")
+    # pass(t)
   end
 
   task load_orders: :environment do |t|
@@ -163,11 +221,11 @@ namespace :logistics do
     starting(t)
     run('logistics:admin_dashboard_login', true)
     run('logistics:backup_order_status')
-    run('logistics:load_orders')
+    # run('logistics:load_orders')
     multi_send_to_nationwide
-    run('logistics:load_orders')
+    # run('logistics:load_orders')
     run('logistics:restore_logistic_order_status')
-    run('logistics:load_orders')
+    # run('logistics:load_orders')
     pass(t)
   end
 
@@ -180,11 +238,12 @@ namespace :logistics do
       client_id: 583647,
       email: 'hoanghiepitvnn@gmail.com'
     }, api_token)
+    
     resp.status_200?
     resp.message_eq?('Đã cập nhật thành công !')
     delay(5)
     details_msg('Action', 'Calling task \'rake job_queues:process\' ...')
-    run_sys_cmd(['rake job_queues:process'])
+    # run_sys_cmd(['rake job_queues:process'])
     pass(t)
   end
 
@@ -200,7 +259,7 @@ namespace :logistics do
     starting(t)
     details_msg("\nAction", 'Database is restoring ...')
     @after_restore = restore_logistic_order_status(@backup_order_status)
-    delay(30)
+    delay(5)
     sync_es
     get('').eq?(@backup_order_status, @after_restore)
     pass(t)
@@ -219,15 +278,15 @@ namespace :logistics do
       email: 'hoanghiepitvnn@gmail.com',
       order_code_list: order_code_list.to_json
     }
+
     details_msg('Action', 'Sending request to server ...')
     resp = put('logistics/orders/multi_send_to_nationwide', params, api_token)
     resp.status_200?
-
-    delay(15)
+    delay(5)
     details_msg('Action', 'Calling task \'rake job_queues:process\' ...')
-    run_sys_cmd(['rake job_queues:process'])
-    delay(45)
-    sync_es
+    # run_sys_cmd(['rake job_queues:process'])
+    delay(5)
+    # sync_es
 
     details_msg('Action', 'Process and checking to ensure data valid ...')
     JSON.parse(params[:order_code_list], symbolize_names: true).each do |item|
@@ -277,9 +336,9 @@ namespace :logistics do
 
   def fetch_logistic_order_status(order_codes)
     sql = <<-SQL
-      select code, logistic_order_status
-      from res_order
-      where code IN (#{order_codes.map{|code| "'#{code}'"}.join(',')})
+      SELECT code, logistic_order_status
+      FROM res_order
+      WHERE code IN (#{order_codes.map{|code| "'#{code}'"}.join(',')})
     SQL
     execute_sql(sql).to_a
   end
@@ -289,7 +348,7 @@ namespace :logistics do
       sql = <<-SQL
         update res_order
         set es_synced = 0, logistic_order_status = '#{order[:logistic_order_status]}'
-        where code = '#{order[:code]}'
+        WHERE code = '#{order[:code]}'
       SQL
       execute_sql(sql)
     end
@@ -332,36 +391,64 @@ namespace :logistics do
     sql = <<-SQL
       select code
       from res_order
-      where okiela_24_7_nationwide_flag in (0) and logistic_order_status = 'new' and logistic_order_status <> "buses_sent" and logistic_order_status <> "nationwide_sent"
-      order by entity_id desc
-      limit 5 offset 200
+      where
+        okiela_24_7_nationwide_flag = 0 AND
+        keeping_driver IS NOT NULL AND
+        logistic_order_status IN ('delivery_driver', 'drop_off', 'final_van_helper', 'at_hub')
+      ORDER BY entity_id desc
+      limit 5 offset 0
     SQL
+
     @hcm_orders = execute_sql(sql).to_a.map{|e| e[:code]}
 
     sql = <<-SQL
-      select code
-      from res_order
-      where okiela_24_7_nationwide_flag in (1) and logistic_order_status = 'new' and logistic_order_status <> "nationwide_sent"
-      order by entity_id desc
-      limit 5 offset 200
+      SELECT code
+      FROM res_order
+      WHERE
+        keeping_driver IS NOT NULL AND
+        okiela_24_7_nationwide_flag in (1) AND
+        logistic_order_status IN ('delivery_driver', 'drop_off', 'final_van_helper', 'at_hub') AND
+        logistic_order_status <> "nationwide_sent"
+      ORDER BY entity_id desc
+      limit 5 offset 10
     SQL
+
     @nationwide_orders = execute_sql(sql).to_a.map{|e| e[:code]}
 
     sql = <<-SQL
-      select code
-      from res_order
-      where okiela_24_7_nationwide_flag in (2) and logistic_order_status = 'new' and logistic_order_status <> "buses_sent"
-      order by entity_id desc
-      limit 3 offset 200
+      SELECT code
+      FROM res_order
+      WHERE
+        keeping_driver IS NOT NULL AND
+        okiela_24_7_nationwide_flag in (2) AND
+        logistic_order_status IN ('delivery_driver', 'drop_off', 'final_van_helper', 'at_hub') AND
+        logistic_order_status <> "buses_sent"
+      ORDER BY entity_id desc
+      limit 3 offset 10
     SQL
     @buses_orders = execute_sql(sql).to_a.map{|e| e[:code]}
 
     sql = <<-SQL
-      select code
-      from res_order
-      where okiela_24_7_nationwide_flag in (3) and logistic_order_status = 'new' and logistic_order_status <> "buses_sent"
-      order by entity_id desc
-      limit 3 offset 200
+      SELECT code
+      FROM res_order
+      WHERE
+        keeping_driver IS NOT NULL AND
+        okiela_24_7_nationwide_flag in (3) AND
+        logistic_order_status IN ('delivery_driver', 'drop_off', 'final_van_helper', 'at_hub') AND
+        logistic_order_status <> "buses_sent"
+      ORDER BY entity_id desc
+      limit 3 offset 10
+    SQL
+    @buses_orders.concat(execute_sql(sql).to_a.map{|e| e[:code]})
+
+    sql = <<-SQL
+      SELECT code
+      FROM res_order
+      WHERE
+        keeping_driver IS NULL AND
+        okiela_24_7_nationwide_flag in (3)
+      ORDER BY entity_id desc
+      limit 3 offset 10
     SQL
     @buses_orders.concat(execute_sql(sql).to_a.map{|e| e[:code]})
   end
