@@ -2,11 +2,9 @@ require_relative 'environment.rb'
 
 namespace :system do
   task console: :environment do |t| 
+    # Backend::App::MiscServices::PhoneNumberService.prefix_phone_conversions
     binding.pry
-    # irb_cmd([
-    #   "order = Backend::App::Orders.by_parameters(code: 'MD263445', limit: 1)",
-    #   "puts order.code"
-    # ])
+    
     # run_sys_cmd(['rake elasticsearch:resync_fail_orders'])
     # run_sys_cmd(['sudo -s', 'cd /tmp', 'ls'])
   end
@@ -14,6 +12,15 @@ namespace :system do
   task log_nginx_dev1: :environment do |t|
     starting(t)
     run_sys_cmd(['sudo tail -f /var/log/nginx/access.log'], ssh_servers: ['dev1'], sudo: false)
+    pass(t)
+  end
+
+  task force_logout: :environment do |t|
+    starting(t)
+    irb_cmd([
+      "user = Backend::App::LogisticUsers.by_parameters(phone: '01010101017', limit: 1)",
+      "Backend::App::MiscServices::ForceLogout.force_logout!(user)"
+    ])
     pass(t)
   end
 
