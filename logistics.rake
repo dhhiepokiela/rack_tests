@@ -729,9 +729,9 @@ namespace :logistics do
   def clean_orders
     sql = 
       <<-SQL
-        select entity_id
-        from res_order
-        where logistic_order_status IN ("nationwide_sent","buses_sent")
+        SELECT entity_id
+        FROM res_order
+        WHERE logistic_order_status IN ("nationwide_sent","buses_sent")
       SQL
 
     orders = DatabasePool.get_connector.query(sql: sql).to_a.map{|e| e[:entity_id]}
@@ -767,10 +767,40 @@ namespace :logistics do
         update res_order
         set es_synced = 0, 
             pickup_driver = #{driver_id}
-        where code IN (#{orders.inject([]){|a, e| a << ("'#{e}'")}.join(',')})
+        WHERE code IN (#{orders.inject([]){|a, e| a << ("'#{e}'")}.join(',')})
       SQL
 
     execute_sql(sql)
     sync_es
+  end
+
+  def display_order_fee(fields, orders, weights)
+    orders.each do |order|
+      puts "\n==========\n"
+      puts [
+        order.map{|k, v| "#{k}: #{v}"},
+        "weight: #{weights[order[:code]]}"
+      ].join("\n")
+    end
+  end
+
+  def load_order_fee(fields, codes)
+    sql =
+      <<-SQL
+        SELECT #{fields.join(',')}
+        FROM res_order
+        WHERE code IN (#{codes.inject([]){|a, e| a << ("'#{e}'")}.join(',')})
+        ORDER BY entity_id
+      SQL
+
+    execute_sql(sql).to_a
+  end
+
+  def load_order_weight(codes)
+    codes.inject({}) do |result, code|
+      order = Backend::App::Orders.by_parameters(code: code, limit: 1) 
+      return result if order.nil? || order.order_detail_collection.nil? || order.order_detail_collection.first.nil?
+      result.merge(code => order.order_detail_collection.first.package_weight)
+    end
   end
 end
