@@ -36,7 +36,7 @@ namespace :auth do
   task user_login: :environment do |t|
     starting(t)
     details_msg('INFO', 'Login user with 11 digits ...')
-    resp = user_login('0785286828', '123456')
+    resp = user_login('01285286828', '123456')
     resp.status_200?
 
     details_msg('INFO', 'Login user with 10 digits ...')

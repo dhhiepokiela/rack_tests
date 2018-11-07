@@ -37,6 +37,60 @@ namespace :clients do
     resp.status_200?
   end
 
+  task get_public_okiela_drop_off_address: :environment do |t|
+    starting(t)
+    # provinces = Backend::App::MiscServices::LocationService.provinces.map { |p| p['province_id'] }
+    provinces = [60]
+    provinces.each do |province_id|
+      province_name = Backend::App::MiscServices::LocationService.get_province_name(province_id: province_id)
+      districts = Backend::App::MiscServices::LocationService.new.get_all_districts(province_id: province_id)
+      districts.each do |district|
+        resp = get('/external_clients/delivery/get_public_okiela_drop_off_address', {
+          city_id: province_id,
+          district_id: district['district_id']
+        }, api_secret)
+        resp.status_200?
+        details_msg('INFO', "Tỉnh: #{province_name} - Quận/Huyện: #{district['name']} - Điểm giao dịch: #{resp['address_list'].count}")
+      end
+    end
+    pass(t)
+  end
+
+  task delivery_orders: :environment do |t|
+    starting(t)
+    phone = Backend::App::Users.by_id(583647).phone
+    client_login(phone, '123456')
+    details_msg('INFO', "Signed In Client #{phone}")
+
+    params =  {
+      okiela_24_7_nationwide_flag: '3',
+      delivery_barcode: "98765432345678",
+      delivery_code: "CS1000001",
+      shop_dropoff: "583659",
+      product_name: "Quan xa lon 1",
+      delivery_original_price: "0",
+      package_weight: "100",
+      purchaser_name: "Chau Test",
+      purchaser_phone: "0987654321",
+      purchaser_address: "123 Nguyen Thi Minh Khai",
+      purchaser_city: "Hồ Chí Minh",
+      purchaser_district: "Quận 1",
+      check_before_accept: "1",
+      is_fragile: "1",
+      buyer_pay_delivery_fee: "0",
+      final_dropoff: "263679",
+      delivery_method: "fast"
+    }
+
+    details_msg('INFO', 'Sending request to server')
+    resp = post('/external_clients/delivery/orders', params, api_token)
+    resp.status_200?
+    resp.message_eq?('Tạo đơn hàng thành công.')
+    details_msg('INFO', "Order created ID #{resp['order']['id']} - #{resp['order']['code']}")
+    resp.eq?(resp['order']['okiela_24_7_nationwide_flag'], 3)
+    pass(t)
+  end
+
   task reset_password_default: :environment do |t|
     starting(t)
     run('clients:reset_password', true)
@@ -66,28 +120,33 @@ namespace :clients do
   end
 
   task create_success: :environment do |t|
-    phone_number = "078528#{ "%02d" % rand(1000..9999) }"
-    
-    resp = create_client(phone_number)
-    resp.status_200?
-    
-    force_reset_default_password_by_phone(phone_number) # 123456
-    resp = client_login(phone_number, ENV['DEFAULT_PASSWORD'])
-    resp.status_201?
-    resp.eq?(resp['notifications']['hint'], 'need_change_password')
+    %w[078 0128].each do |prefix|
+      phone_number = "#{prefix}528#{ "%02d" % rand(1000..9999) }"
+      # phone_number = '01285286828'
+      
+      resp = create_client(phone_number)
+      resp.status_200?
+      
+      force_reset_default_password_by_phone(phone_number) # 123456
+      resp = client_login(phone_number, ENV['DEFAULT_PASSWORD'])
+      resp.status_201?
+      resp.eq?(resp['notifications']['hint'], 'need_change_password')
 
-    resp = put('auth/change-password', {phone: phone_number, old_password: ENV['DEFAULT_PASSWORD'], new_password: ENV['NEW_PASSWORD']}, api_token)
-    resp.status_201?
+      resp = put('auth/change-password', {phone: phone_number, old_password: ENV['DEFAULT_PASSWORD'], new_password: ENV['NEW_PASSWORD']}, api_token)
+      resp.status_201?
 
-    resp = put('auth/change-password', {phone: phone_number, old_password: ENV['NEW_PASSWORD'], new_password: ENV['DEFAULT_PASSWORD']}, api_token)
-    resp.status_201?
-    
-    resp = client_login(phone_number, ENV['DEFAULT_PASSWORD'])
-    resp.eq?(resp['notifications']['hint'].blank?, true)
-    resp.status_200?
+      resp = put('auth/change-password', {phone: phone_number, old_password: ENV['NEW_PASSWORD'], new_password: ENV['DEFAULT_PASSWORD']}, api_token)
+      resp.status_201?
+      
+      resp = client_login(phone_number, ENV['DEFAULT_PASSWORD'])
+      resp.eq?(resp['notifications']['hint'].blank?, true)
+      resp.status_200?
+    end
   end
 
   task create_success_with_flag_change_password: :environment do |t|
+    # phone_number = "078528#{ "%02d" % rand(1000..9999) }"
+    phone_number = '0898151414'
     
     resp = create_client(phone_number)
     resp.message_eq?('Tạo client thành công')

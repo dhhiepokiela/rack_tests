@@ -243,7 +243,7 @@ namespace :logistics do
     resp.message_eq?('Đã cập nhật thành công !')
     delay(5)
     details_msg('Action', 'Calling task \'rake job_queues:process\' ...')
-    # run_sys_cmd(['rake job_queues:process'])
+    run_sys_cmd(['rake job_queues:process'])
     pass(t)
   end
 

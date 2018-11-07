@@ -24,6 +24,15 @@ namespace :system do
     pass(t)
   end
 
+  task reset_get_public_okiela_drop_off_address: :environment do |t|
+    starting(t)
+    commands = []
+    commands << "file_path = $_CONFIG['system']['files']['cache_ip_address']"
+    commands << 'File.open(file_path, "a+") { |file| file.truncate(0); file.write("#{{}.to_json}") }'
+    irb_cmd(commands, ssh_servers: %w[dev2])
+    pass(t)
+  end
+
   task reload_price_check_cache: :environment do |t|
     starting(t)
     run_sys_cmd(['ruby ./tools/price_check/reload_cache.rb'])
