@@ -243,7 +243,7 @@ namespace :logistics do
     resp.message_eq?('Đã cập nhật thành công !')
     delay(5)
     details_msg('Action', 'Calling task \'rake job_queues:process\' ...')
-    run_sys_cmd(['rake job_queues:process'])
+    # run_sys_cmd(['rake job_queues:process'])
     pass(t)
   end
 
@@ -288,40 +288,40 @@ namespace :logistics do
     delay(5)
     # sync_es
 
-    details_msg('Action', 'Process and checking to ensure data valid ...')
-    JSON.parse(params[:order_code_list], symbolize_names: true).each do |item|
-      order_id = Backend::App::Orders.by_parameters(code: item[:code], limit: 1).try(:id)
-      unless order_id
-        error_msg("Order #{item[:code]} was not found!")
-        next
-      end
-      order = Backend::App::Orders.by_id(order_id, true)
-      is_hcm_order = @hcm_orders.include?(item[:code])
-      is_nationwide_order = @nationwide_orders.include?(item[:code])
-      is_buses_order = @buses_orders.include?(item[:code])
-      logistic_order_status =
-        case true
-        when is_nationwide_order
-          'nationwide_sent'
-        when is_buses_order
-          'buses_sent'
-        when is_hcm_order
-          %w[nationwide_sent buses_sent]
-        end
+    # details_msg('Action', 'Process and checking to ensure data valid ...')
+    # JSON.parse(params[:order_code_list], symbolize_names: true).each do |item|
+    #   order_id = Backend::App::Orders.by_parameters(code: item[:code], limit: 1).try(:id)
+    #   unless order_id
+    #     error_msg("Order #{item[:code]} was not found!")
+    #     next
+    #   end
+    #   order = Backend::App::Orders.by_id(order_id, true)
+    #   is_hcm_order = @hcm_orders.include?(item[:code])
+    #   is_nationwide_order = @nationwide_orders.include?(item[:code])
+    #   is_buses_order = @buses_orders.include?(item[:code])
+    #   logistic_order_status =
+    #     case true
+    #     when is_nationwide_order
+    #       'nationwide_sent'
+    #     when is_buses_order
+    #       'buses_sent'
+    #     when is_hcm_order
+    #       %w[nationwide_sent buses_sent]
+    #     end
 
-      begin
-        if is_hcm_order
-          resp.not_include?(logistic_order_status, order.logistic_order_status)
-        else
-          resp.eq?(order.logistic_order_status, logistic_order_status)
-          resp.eq?(order.nationwide_sent_date.strftime('%Y-%m-%d %H:%M'), item[:date])
-        end
-        success_msg_inline('.')
-      rescue Exception => e
-        error_msg("\nOrder #{item[:code]} => #{e}")
-        binding.pry
-      end
-    end
+    #   begin
+    #     if is_hcm_order
+    #       resp.not_include?(logistic_order_status, order.logistic_order_status)
+    #     else
+    #       resp.eq?(order.logistic_order_status, logistic_order_status)
+    #       resp.eq?(order.nationwide_sent_date.strftime('%Y-%m-%d %H:%M'), item[:date])
+    #     end
+    #     success_msg_inline('.')
+    #   rescue Exception => e
+    #     error_msg("\nOrder #{item[:code]} => #{e}")
+    #     binding.pry
+    #   end
+    # end
 
     puts ''
   end

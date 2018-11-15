@@ -1,14 +1,11 @@
 require_relative 'environment.rb'
 
+
 namespace :system do
-  task console: :environment do |t| 
-    # Backend::App::MiscServices::PhoneNumberService.prefix_phone_conversions
+  task console: :environment do |t|
     binding.pry
-    
-    # run_sys_cmd(['rake elasticsearch:resync_fail_orders'])
-    # run_sys_cmd(['sudo -s', 'cd /tmp', 'ls'])
   end
-  
+
   task log_nginx_dev1: :environment do |t|
     starting(t)
     run_sys_cmd(['sudo tail -f /var/log/nginx/access.log'], ssh_servers: ['dev1'], sudo: false)
