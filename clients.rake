@@ -37,6 +37,12 @@ namespace :clients do
     resp.status_200?
   end
 
+  task client_order_statistic: :environment do |t|
+    client = Backend::App::Users.by_parameters(phone: '0386222224')
+    order = Backend::App::Orders.by_id(28032798)
+    Backend::App::Orders.by_parameters(client_id: client.id, return_count: true, limit: false)
+  end
+
   task get_public_okiela_drop_off_address: :environment do |t|
     # starting(t)
     # provinces = Backend::App::MiscServices::LocationService.provinces.map { |p| p['province_id'] }
@@ -90,11 +96,10 @@ namespace :clients do
 
     resp = get('external_clients/delivery/dropoffs_by_name', { name: 'AD4013' }, api_token)
     resp.status_403?
-    binding.pry
     pass(t)
   end
 
-  task delivery_orders: :environment do |t|
+  task create_single_delivery_orders: :environment do |t|
     starting(t)
     phone = Backend::App::Users.by_id(583647).phone
     client_login(phone, '123456')
@@ -118,35 +123,56 @@ namespace :clients do
       delivery_method: "fast"
     }
 
-    details_msg('INFO', 'Start test validation')
-    required_fields = {
-      okiela_24_7_nationwide_flag: 'Điểm nhận hàng',
-      purchaser_name: 'Tên người nhận',
-      purchaser_address: 'Địa chỉ người nhận',
-      purchaser_district: 'Quận/Huyện',
-      purchaser_city: 'Tỉnh/Thành phố',
-      purchaser_phone: 'Số điện thoại người nhận',
-      delivery_original_price: 'Tổng tiền thu hộ',
-      package_weight: 'Khối lượng',
-      shop_dropoff: 'Kho hàng của bạn',
-      is_fragile: 'Hàng dễ vỡ',
-      buyer_pay_delivery_fee: 'Người nhận trả cước'
-    }
+    params.merge!(
+      buyer_pay_delivery_fee: '1',
+      delivery_code: "HHK #{rand(0..999)}",
+      delivery_method: 'normal',
+      delivery_original_price: '500000',
+      is_fragile: '0',
+      okiela_24_7_nationwide_flag: '2',
+      package_weight: '10000',
+      product_name: '1234',
+      purchaser_address: '223',
+      purchaser_city: "Hồ Chí Minh",
+      purchaser_district: "Huyện Cần Giờ",
+      purchaser_name: 'Hiep',
+      purchaser_note: '',
+      purchaser_phone: '01285286828',
+      shop_dropoff: '583659'
+    )
 
-    required_fields.each do |key, value|
-      details_msg('INFO', "Validation case: \"#{value}\"")
-      resp = post('external_clients/delivery/orders', params.except(key.to_sym), api_token)
-      resp.status_403?
-      resp.message_eq?("Vui lòng nhập các thông tin sau: #{value}.")
+    unless ENV['BYPASS_VALIDATION'].boolean_true?
+      details_msg('INFO', 'Start test validation')
+      required_fields = {
+        okiela_24_7_nationwide_flag: 'Điểm nhận hàng',
+        purchaser_name: 'Tên người nhận',
+        purchaser_address: 'Địa chỉ người nhận',
+        purchaser_district: 'Quận/Huyện',
+        purchaser_city: 'Tỉnh/Thành phố',
+        purchaser_phone: 'Số điện thoại người nhận',
+        delivery_original_price: 'Tổng tiền thu hộ',
+        package_weight: 'Khối lượng',
+        shop_dropoff: 'Kho hàng của bạn',
+        is_fragile: 'Hàng dễ vỡ',
+        buyer_pay_delivery_fee: 'Người nhận trả cước'
+      }
+
+      required_fields.each do |key, value|
+        details_msg('INFO', "Validation case: \"#{value}\"")
+        resp = post('external_clients/delivery/orders', params.except(key.to_sym), api_token)
+        resp.status_403?
+        resp.message_eq?("Vui lòng nhập các thông tin sau: #{value}.")
+      end
+      details_msg('INFO', 'End test validation')
     end
-    details_msg('INFO', 'End test validation')
 
     details_msg('INFO', 'Sending request to server')
     resp = post('external_clients/delivery/orders', params, api_token)
     resp.status_200?
     resp.message_eq?('Tạo đơn hàng thành công.')
-    details_msg('INFO', "Order created ID #{resp['order']['id']} - #{resp['order']['code']}")
     resp.eq?(resp['order']['okiela_24_7_nationwide_flag'], 3)
+    save_order_code(resp['order']['code'])
+    details_msg('INFO', "Order created ID #{resp['order']['id']} - #{resp['order']['code']} - #{params[:delivery_code]}")
     pass(t)
   end
 
@@ -178,14 +204,28 @@ namespace :clients do
     run('clients:login_success', true)
   end
 
+  task set_allow_select_delivery_method: :environment do |t|
+    starting(t)
+    client = Backend::App::Users.by_parameters(phone: ENV['PHONE'])
+    details_msg('INFO', "Before allow_select_delivery_method #{client.allow_select_delivery_method?}")
+    client.allow_select_delivery_method = ENV['VALUE'].to_s == 'true'
+    client.save
+    client = Backend::App::Users.by_id(client.id, true)
+    details_msg('INFO', "After allow_select_delivery_method #{client.allow_select_delivery_method?}")
+    pass(t)
+  end
+
   task create_success: :environment do |t|
-    %w[078 0128].each do |prefix|
+    %w[078].each do |prefix|
       phone_number = "#{prefix}528#{ "%02d" % rand(1000..9999) }"
       # phone_number = '01285286828'
       
       resp = create_client(phone_number)
       resp.status_200?
-      
+      client = Backend::App::Users.by_id(resp['resource']['client']['id'], true)
+      resp.eq?(client.discount_percent, 25)
+      resp.eq?(client.paid_a_deposit?, true)
+
       force_reset_default_password_by_phone(phone_number) # 123456
       resp = client_login(phone_number, ENV['DEFAULT_PASSWORD'])
       resp.status_201?
@@ -203,14 +243,54 @@ namespace :clients do
     end
   end
 
+  task update_client: :environment do |t|
+    starting(t)
+    ensure_loged_in
+    client_id = '28036154'
+
+    cases = [
+      { discount_percent: '26', paid_a_deposit: 'false' },
+      { discount_percent: '50', paid_a_deposit: 'true' },
+      { discount_percent: '10', paid_a_deposit: 'false' },
+      { discount_percent: '0', paid_a_deposit: 'false' },
+      { discount_percent: '29', paid_a_deposit: 'true' },
+    ]
+
+    cases.each do |test_case|
+      details_msg('INFO', "Loading test case: #{test_case}")
+      resp = put("external_clients/#{client_id}", test_case, api_token)
+      resp.status_200?
+      client = Backend::App::Users.by_id(client_id, true)
+      resp.eq?(client.discount_percent, test_case[:discount_percent].to_i)
+      resp.eq?(client.paid_a_deposit?, test_case[:paid_a_deposit].boolean_true?)
+    end
+    
+    resp = put("external_clients/#{client_id}", {}, api_token)
+    client = Backend::App::Users.by_id(client_id, true)
+    resp.eq?(client.discount_percent, cases[-1][:discount_percent].to_i)
+    resp.eq?(client.paid_a_deposit?, cases[-1][:paid_a_deposit].boolean_true?)
+
+    cases_fails = [
+      { discount_percent: 'xx' },
+      { discount_percent: '-1' },
+      { discount_percent: '101' }
+    ]
+
+    cases_fails.each do |test_case|
+      details_msg('INFO', "Loading test case: #{test_case}")
+      resp = put("external_clients/#{client_id}", test_case, api_token)
+      resp.status_403?
+    end
+
+    pass(t)
+  end
+
   task create_success_with_flag_change_password: :environment do |t|
     phone_number = "078528#{ "%02d" % rand(1000..9999) }"
     # phone_number = '0898151414'
     
     resp = create_client(phone_number)
     resp.message_eq?('Tạo client thành công')
-    user = Backend::App::Users.by_parameters(phone: '0785286828', limit: 1)
-    binding.pry
 
     # force_reset_default_password_by_phone(phone_number) # 123456
     resp = client_login(phone_number, ENV['DEFAULT_PASSWORD'])
@@ -252,9 +332,9 @@ namespace :clients do
   end
 
   task price_check: :environment do |t|
-    run('clients:login_success', true)
+    client = run('clients:login_success', true)
     @tolerance = 5 # minutes
-    @test_validation = true
+    @test_validation = false
 
     params = {
       package_weight: '2000',
@@ -588,11 +668,16 @@ namespace :clients do
     data_tests << hcm
     data_tests << hcm_can_gio
 
+    client = client_login(ENV['PHONE_NUMBER'], ENV['DEFAULT_PASSWORD'])
+
+    client = Backend::App::Users.by_id(28020177).phone
     data_tests.each do |data_test|
       data_test.each do |test_case|
         success_msg "Processing test case: #{fect_province_and_district_name(test_case[:data])} - #{test_case[:data]} ..."
         success_msg "_ _ _ Normal expected: #{test_case[:expected][:normal]}"
         success_msg "_ _ _ Fast expected: #{test_case[:expected][:fast]}"
+        binding.pry
+        params[:check_free_deliveries] = true
         resp = get('external_clients/delivery/price_check', params.merge(test_case[:data]), api_token)
         resp.status_200?
         resp['price_check'].each do |delivery_method|
@@ -786,13 +871,15 @@ namespace :clients do
       surname: "Client #{suffix}",
       phone: phone_number,
       email: "client_tester_#{suffix}@okiela.com",
-      client_free_deliveries_number: 10,
+      client_free_deliveries_number: 2,
       shop_name: "Shop ##{suffix}",
       shop_street: "#{suffix} Tan Ky Tan Quy",
       shop_ward: 'Phuong 6',
       shop_town: '',
       shop_district: 'Quận Tân Bình',
-      shop_city: 'HCM'
+      shop_city: 'HCM',
+      discount_percent: '25',
+      paid_a_deposit: 'true'
     }
 
     post('external_clients', client_params, api_token)

@@ -3,7 +3,7 @@ def print_memory_usage
   yield
   memory_after = `ps -o rss= -p #{Process.pid}`.to_i
 
-  puts "Memory: #{((memory_after - memory_before) / 1024.0).round(2)} MB" if debug_mode?
+  puts " - Memory: #{((memory_after - memory_before) / 1024.0).round(2)} MB"# if debug_mode?
 end
 
 def print_time_spent
@@ -11,7 +11,7 @@ def print_time_spent
     yield
   end
 
-  puts "Time: #{time.round(2)}" if debug_mode?
+  print "Time: #{time.round(2)} seconds"# if debug_mode?
 end
 
 # # Usage
@@ -95,6 +95,12 @@ HTTParty::Response.class_eval do
       msg = "Status expected #{code} but got #{code_returned}. #{self}"
       raise msg.colorize(:red)
     end
+  end
+
+  def status_200_or_201?
+    return if [200, 201].include?(self['meta']['code'].to_i)
+    msg = "Status expected #{code} but got #{self['meta']['code'].to_i}. #{self}"
+    raise msg.colorize(:red)
   end
 
   def message_eq?(msg = '')
@@ -206,6 +212,10 @@ def dashboard_logistic_login!
   logistic_login(ENV['ADMIN_DASHBOARD_PHONE'], ENV['ADMIN_DASHBOARD_PASSD'])
 end
 
+def account_logistic_login!
+  logistic_login(ENV['ADMIN_ACCOUNT_PHONE'], ENV['ADMIN_ACCOUNT_PASSD'])
+end
+
 def login_agent!
   agent_login(ENV['AGENT_PHONE'], ENV['AGENT_PASS'])
 end
@@ -226,14 +236,39 @@ def get_order_by_id(id)
   Backend::App::Orders.by_id(id)
 end
 
+def build_colunms_with_color(arr_string, join_char = ' - ')
+  "#{arr_string.each_with_index.to_a.map {|e| e[0].to_s.colorize(text_colors[e[1]]) }.join(join_char)}"
+end
+
+def text_colors
+  %i[red green blue light_red yellow magenta light_magenta cyan light_white default] * 2
+end
+
+def disply_tables(data: [], columns: [], options: {})
+  return if data.empty?
+  default_options = {}
+  if columns.any?
+    puts "\n#{options[:title]} - #{build_colunms_with_color(columns)}"
+    default_options[:fields] = columns
+  end
+  puts Hirb::Helpers::AutoTable.render(data, default_options.merge(options))
+end
+
+def proc_format_datetime
+  Proc.new {|dt| dt.strftime('%d%m %H:%M') }
+end
+
 def display_string_colors
-  String.colors.each do |p|
+  # String.colors.each do |p|
+  text_colors.each do |p|
     puts "test => #{p}".colorize(p)
   end
 end
 
-def details_msg(title = '', msg = '')
-  puts "#{title.colorize(:blue)}: #{msg.to_s.colorize(:light_cyan)}"
+def details_msg(title = '', msg = '', new_line: true, color: :light_cyan)
+  print "#{title.colorize(:blue)}: " if title.present?
+  print msg.to_s.colorize(color)
+  print "\n" if new_line 
 end
 
 def info_msg(msg = '')
@@ -375,10 +410,23 @@ def run_sys_cmd(commands, ssh_servers: ['dev1', 'dev2'], sudo: true)
   end
 end
 
-def delay(seconds)
-  seconds.times do |i|
-    details_msg("INFO", "System will be continue in #{seconds - i} second(s)")
-    sleep(1)
+def save_order_code(code)
+  File.open('rake_tests/codes.txt', 'w') { |file| file.write code }
+end
+
+def load_order_code
+   File.read('rake_tests/codes.txt')
+end
+
+def delay(seconds, description: nil, press_key_continue: false)
+  if press_key_continue
+    details_msg("INFO", "Description: #{description}")
+    continue_story
+  else
+    seconds.times do |i|
+      details_msg("INFO", "System will be continue in #{seconds - i} second(s)#{ description ? ": #{description}" : ''}")
+      sleep(1)
+    end
   end
 end
 
@@ -387,4 +435,32 @@ def check_and_delete_order_on_es(order_id)
     details_msg('SYSTEM', "Removing order ##{order_id} on ES")
     HTTParty.delete("http://api-online-dev.okiela.com:9200/okiela/order/#{order_id}")
   end
+end
+
+def continue_story
+  print "\nPress any key to continue ...\n"
+  STDIN.getch
+  print "            \r" # extra space to overwrite in case next sentence is shorts
+end 
+
+def reload!
+  $VERBOSE = nil
+  puts 'Reloading ...'
+  # Main project directory.
+  root_dir = "/var/www/trendu_backend"
+  # Directories within the project that should be reloaded.
+  reload_dirs = %w{app libraries rake_tests}
+
+  # Loop through and reload every file in all relevant project directories.
+  reload_dirs.each do |dir|
+    Dir.glob("#{root_dir}/#{dir}/**/*.rb").each do |f| 
+      begin
+        load(f) rescue nil 
+      rescue Exception => e
+      end
+    end
+  end
+
+  # Return true when complete.
+  true
 end

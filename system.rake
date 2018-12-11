@@ -6,6 +6,20 @@ namespace :system do
     binding.pry
   end
 
+  task benchmark: :environment do |t|
+    starting(t)
+    dashboard_logistic_login!
+    ENV['TIMES'].to_i.times do
+      print_memory_usage do
+        print_time_spent do
+          resp = get('logistics/orders/28033677/get_okiela_drop_off_address', {}, api_token)
+          resp.status_200?
+        end
+      end
+    end
+    pass(t)
+  end
+
   task log_nginx_dev1: :environment do |t|
     starting(t)
     run_sys_cmd(['sudo tail -f /var/log/nginx/access.log'], ssh_servers: ['dev1'], sudo: false)
@@ -17,6 +31,16 @@ namespace :system do
     irb_cmd([
       "user = Backend::App::LogisticUsers.by_parameters(phone: '01010101017', limit: 1)",
       "Backend::App::MiscServices::ForceLogout.force_logout!(user)"
+    ])
+    pass(t)
+  end
+
+  task clear_statistic: :environment do |t|
+    ENV['MODE'] = 'dev'
+    starting(t)
+    irb_cmd([
+      "user = Backend::App::Users.by_parameters(phone: '0386222220')",
+      "user.get_ex_client_financial_info(force_reload: true)"
     ])
     pass(t)
   end

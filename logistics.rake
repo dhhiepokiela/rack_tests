@@ -12,6 +12,11 @@ namespace :logistics do
     resp = dashboard_logistic_login!
     resp.status_200?
   end
+  
+  task admin_account_login: :environment do |t|
+    resp = account_logistic_login!
+    resp.status_200?
+  end
 
   task manager_update_package_weight: :environment do |t|
     starting(t)
@@ -51,12 +56,71 @@ namespace :logistics do
 
     run('logistics:admin_dashboard_login', true)
 
-    details_msg("\nAction", 'Sending request to server update_dropoff_owner')
+    details_msg("\nAction", 'Sending request to server to update_dropoff_owner')
     phone_number = "078528#{ "%02d" % rand(1000..9999) }"
     resp = put('logistics/update_dropoff_owner', { dropoff_location_id: '28013536', dropoff_owner_id: '28013549', phone: phone_number }, api_token)
     resp.status_200?
     dropoff_owner = Backend::App::LogisticUsers.by_id('28013549', true)
     resp.eq?(dropoff_owner.phone, phone_number)
+    pass(t)
+  end 
+
+  task manager_change_oll_order_type: :environment do |t|
+    starting(t)
+
+    run('logistics:admin_dashboard_login', true)
+
+    details_msg('INFO', 'Current OLL_NATIONWIDE_STATUS_CHANGEABLE')
+    puts (Backend::App::Order::OLL_NATIONWIDE_STATUS_CHANGEABLE)
+
+    details_msg("\nAction", 'Sending request to server to manager_change_oll_order_type')
+    order = Backend::App::Orders.by_parameters(okiela_24_7_nationwide_flag: 1, order_status: 'processing')
+    %w[a 0 1 3].each do |failure_flag|
+      current_okiela_24_7_nationwide_flag = order.okiela_24_7_nationwide_flag
+      details_msg("INFO", "Does not change Order #{order.id}-#{order.code} from #{current_okiela_24_7_nationwide_flag} to #{failure_flag} ... ", new_line: false)
+      resp = post('logistics/manager_change_oll_order_type', { 
+        order_id: order.id, 
+        new_okiela_24_7_nationwide_flag: failure_flag
+      }, api_token)
+      resp.status_403?
+      resp.message_eq?(%w[1 3].include?(failure_flag) ? 'Đơn hàng không thể thay đổi trạng thái.' : 'Trạng thái không hợp lệ')
+      order = Backend::App::Orders.by_id(order.id, true)
+      resp.eq?(order.okiela_24_7_nationwide_flag, current_okiela_24_7_nationwide_flag)
+      details_msg("", "OK", new_line: true, color: :green)
+    end
+
+    details_msg("INFO", "Change Order #{order.id}-#{order.code} from #{order.okiela_24_7_nationwide_flag} to #{2} ... ", new_line: false)
+    resp = post('logistics/manager_change_oll_order_type', { 
+      order_id: order.id, 
+      new_okiela_24_7_nationwide_flag: 2
+    }, api_token)
+    resp.status_200?
+    resp.message_eq?('Cập nhật trạng thái thành công')
+    order = Backend::App::Orders.by_id(order.id, true)
+    resp.eq?(order.okiela_24_7_nationwide_flag, 2)
+    details_msg("", "OK", new_line: true, color: :green)
+  
+    current_okiela_24_7_nationwide_flag = order.okiela_24_7_nationwide_flag
+    details_msg("INFO", "Change Order #{order.id}-#{order.code} from #{current_okiela_24_7_nationwide_flag} to #{3} ... ", new_line: false)
+    resp = post('logistics/manager_change_oll_order_type', { 
+      order_id: order.id, 
+      new_okiela_24_7_nationwide_flag: 3
+    }, api_token)
+    order = Backend::App::Orders.by_id(order.id, true)
+    if order.final_dropoff.blank?
+      resp.status_403?
+      resp.message_eq?("Vui lòng nhập Điểm Giao Dịch để cập nhật trạng thái")
+      resp.eq?(order.okiela_24_7_nationwide_flag, current_okiela_24_7_nationwide_flag)
+    else
+      resp.status_200?
+      resp.message_eq?('Cập nhật trạng thái thành công')
+      resp.eq?(order.okiela_24_7_nationwide_flag, 3)
+    end
+    details_msg("", "OK", new_line: true, color: :green)
+
+    # binding.pry
+    
+    # binding.pry
     pass(t)
   end 
 
@@ -232,10 +296,15 @@ namespace :logistics do
   task delivery_import_order: :environment do |t|
     starting(t)
     run('logistics:admin_dashboard_login', true)
+    # phone_number = '0785285914'
+    phone_number = '0785289526'
+    client = Backend::App::Users.by_parameters(phone: phone_number)
+    details_msg('INFO', "allow_select_delivery_method? #{client.allow_select_delivery_method?}")
+
     resp = post('logistics/delivery/import_order', {
       order_data: sample_data_for_import_orders,
       file_name: 'test.txt',
-      client_id: 583647,
+      client_id: client.id,
       email: 'hoanghiepitvnn@gmail.com'
     }, api_token)
     
@@ -244,7 +313,32 @@ namespace :logistics do
     delay(5)
     details_msg('Action', 'Calling task \'rake job_queues:process\' ...')
     # run_sys_cmd(['rake job_queues:process'])
+    client = Backend::App::Users.by_id(client.id, true)
+    details_msg('INFO', "allow_select_delivery_method? #{client.allow_select_delivery_method?}")
     pass(t)
+  end
+
+  task finance_receive_multi_dropoff_payment: :environment do |t|
+    run('logistics:admin_account_login', true)
+    order_code_list = []
+    orders = load_finance_receive_multi_dropoff_payment_orders
+    details_msg('INFO', "Orders: #{orders.join(', ')}")
+    orders.each_with_index do |code, index|
+      order_code_list << {
+        'code' => code,
+        'mode_of_payment' => '1',
+        'money_received_date' => index.days_ago.strftime('%Y-%m-%d %H:%M')
+      }
+    end
+
+    put('logistics/finance/receive_multi_dropoff_payment', {
+      file_name: 'test.txt',
+      email: 'hoanghiepitvnn@gmail.com',
+      order_code_list: order_code_list.to_json
+    }, api_token)
+    
+    details_msg("\n\nINFO", 'Execute rake job_queues:process')
+    run_sys_cmd(['rake job_queues:process'])
   end
 
   task backup_order_status: :environment do |t|
@@ -880,7 +974,7 @@ namespace :logistics do
         ORDER BY entity_id
       SQL
 
-    execute_sql(sql).to_a
+    
   end
 
   def load_order_weight(codes)
@@ -889,5 +983,17 @@ namespace :logistics do
       return result if order.nil? || order.order_detail_collection.nil? || order.order_detail_collection.first.nil?
       result.merge(code => order.order_detail_collection.first.package_weight)
     end
+  end
+
+  def load_finance_receive_multi_dropoff_payment_orders(limit: 5)
+    sql =
+      <<-SQL
+        select code
+        from res_order
+        where order_status = 'completed' AND logistic_order_status IN ('delivered','money_paid') AND money_received_date IS NULL
+        LIMIT #{limit} OFFSET 0
+      SQL
+
+    execute_sql(sql).to_a.map{|o| o[:code]}
   end
 end

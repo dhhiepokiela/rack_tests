@@ -21,7 +21,8 @@ namespace :exports do
         "drop_off_confirmed_date", "purchase_date", "pending_canceled_date", "keeping_driver_name", "pickup_driver_name", 
         "delivery_driver_name", "agent_id", "agent_name", "agent_phone", "agent_address", "purchaser_city", "note", 
         "okiela_24_7_delivery_fee", "purchaser_district", "money_paid_date", "client_delivery_code", "client_stt", "client_package_weight", 
-        "client_order_detail", "client_is_fragile", "client_check_before_accept", "client_buyer_pay_delivery_fee", "money_received_date"
+        "client_order_detail", "client_is_fragile", "client_check_before_accept", "client_buyer_pay_delivery_fee", "money_received_date",
+        "delivery_method", "shop_district"
       ]',
       creator: [],
       oll_types: %w[okiela_24_7_hcm],
