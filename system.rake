@@ -4,6 +4,29 @@ require_relative 'environment.rb'
 namespace :system do
   task console: :environment do |t|
     binding.pry
+    params = {
+      package_weight: '2000',
+      size: '10.6x5.1x30',
+      shop_dropoff_id: '27993016',
+      city_id: 50,
+      district_id: 563
+    }
+
+    resp = get('external_clients/delivery/price_check', params, api_token)
+    resp.status_200?
+  end
+
+  task include_sunday: :environment do |t|
+    (0..20).to_a.each do |i|
+      start_date = 5.days_ago
+      end_date = i.days_from_now
+      result = start_date.range_include_sunday?(end_date)
+      details_msg('INFO', "From #{start_date.strftime('%c')} #{end_date.strftime('%c')}#{result ? '' : ' not'} include Sunday", color: result ? :green : :red)
+    end
+  end
+
+  task debug: :environment do |t|
+    10000.times { |i| puts "##{i}: #{Backend::App::Users.by_id(ENV['ID'], true).status}"; sleep(1)}
   end
 
   task benchmark: :environment do |t|
@@ -23,6 +46,26 @@ namespace :system do
   task log_nginx_dev1: :environment do |t|
     starting(t)
     run_sys_cmd(['sudo tail -f /var/log/nginx/access.log'], ssh_servers: ['dev1'], sudo: false)
+    pass(t)
+  end
+
+  task update_price_check: :environment do |t|
+    starting(t)
+    irb_cmd([
+      "Backend::App::OkielaServices::OkielaShippingFees.reload_cache_fast_delivery",
+      "Backend::App::OkielaServices::OkielaShippingFees.reload_cache_normal_delivery",
+      "Backend::App::OkielaServices::OkielaShippingFees.reload_cache_normal_pickup_delivery",
+      "p Backend::App::OkielaServices::OkielaShippingFees.cache_fast_delivery",
+      "p Backend::App::OkielaServices::OkielaShippingFees.cache_normal_delivery",
+      "p Backend::App::OkielaServices::OkielaShippingFees.cache_normal_pickup_delivery"
+    ])
+    run_sys_cmd(['ruby ./tools/price_check/load_csv_to_json.rb'], sudo: false)
+    pass(t)
+  end
+
+  task update_cache_holidays: :environment do |t|
+    starting(t)
+    run_sys_cmd(['ruby ./tools/update_cache_holidays.rb'], sudo: false)
     pass(t)
   end
 

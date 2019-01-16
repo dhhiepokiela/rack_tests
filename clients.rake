@@ -37,6 +37,29 @@ namespace :clients do
     resp.status_200?
   end
 
+  task prevent_force_logout: :environment do
+    client_login('0386222224', '123456')
+    resp = get('auth', {}, api_token)
+    
+    resp.message_eq?('Phiên làm việc hữu hạn tìm thấy.')
+    details_msg('INFO', 'CLient logged in')
+
+    put("external_clients/settings", {}, api_token).status_200?
+    resp = get('auth', {}, api_token)
+    resp.message_eq?('Phiên làm việc hữu hạn tìm thấy.')
+    details_msg('INFO', 'CLient still logged in')
+
+    get("external_clients/delivery/orders/28034260?id=28034260", {}, api_token).status_200?
+    resp = get('auth', {}, api_token)
+    resp.message_eq?('Phiên làm việc hữu hạn tìm thấy.')
+    details_msg('INFO', 'CLient still logged in')
+    
+    get("external_clients/delivery/orders/28034260/active_tracing?id=28034260", {}, api_token).status_200?
+    resp = get('auth', {}, api_token)
+    resp.message_eq?('Phiên làm việc hữu hạn tìm thấy.')
+    details_msg('INFO', 'CLient still logged in')
+  end
+
   task client_order_statistic: :environment do |t|
     client = Backend::App::Users.by_parameters(phone: '0386222224')
     order = Backend::App::Orders.by_id(28032798)
@@ -97,11 +120,15 @@ namespace :clients do
     resp = get('external_clients/delivery/dropoffs_by_name', { name: 'AD4013' }, api_token)
     resp.status_403?
     pass(t)
+
+    
   end
 
   task create_single_delivery_orders: :environment do |t|
     starting(t)
-    phone = Backend::App::Users.by_id(583647).phone
+    # phone = Backend::App::Users.by_id(583647).phone
+    phone = '0788756946'
+    client = Backend::App::Users.by_parameters(phone: phone)
     client_login(phone, '123456')
     details_msg('INFO', "Signed In Client #{phone}")
 
@@ -127,7 +154,7 @@ namespace :clients do
       buyer_pay_delivery_fee: '1',
       delivery_code: "HHK #{rand(0..999)}",
       delivery_method: 'normal',
-      delivery_original_price: '500000',
+      delivery_original_price: '100000',
       is_fragile: '0',
       okiela_24_7_nationwide_flag: '2',
       package_weight: '10000',
@@ -135,10 +162,11 @@ namespace :clients do
       purchaser_address: '223',
       purchaser_city: "Hồ Chí Minh",
       purchaser_district: "Huyện Cần Giờ",
-      purchaser_name: 'Hiep',
+      purchaser_ward: "Xã Tam Thôn Hiệp",
+      purchaser_name: 'xxHiep',
       purchaser_note: '',
-      purchaser_phone: '01285286828',
-      shop_dropoff: '583659'
+      purchaser_phone: '01285286877',
+      # shop_dropoff: client.own_shops[0].dropoffs[0].id
     )
 
     unless ENV['BYPASS_VALIDATION'].boolean_true?
@@ -217,14 +245,14 @@ namespace :clients do
 
   task create_success: :environment do |t|
     %w[078].each do |prefix|
-      phone_number = "#{prefix}528#{ "%02d" % rand(1000..9999) }"
-      # phone_number = '01285286828'
+      phone_number = "#{prefix}8#{ "%02d" % rand(100000..999999) }"
+      # phone_number = '0785286828'
       
       resp = create_client(phone_number)
       resp.status_200?
       client = Backend::App::Users.by_id(resp['resource']['client']['id'], true)
-      resp.eq?(client.discount_percent, 25)
-      resp.eq?(client.paid_a_deposit?, true)
+      resp.eq?(client.discount_percent, 99)
+      resp.eq?(client.paid_a_deposit?, false)
 
       force_reset_default_password_by_phone(phone_number) # 123456
       resp = client_login(phone_number, ENV['DEFAULT_PASSWORD'])
@@ -258,14 +286,14 @@ namespace :clients do
 
     cases.each do |test_case|
       details_msg('INFO', "Loading test case: #{test_case}")
-      resp = put("external_clients/#{client_id}", test_case, api_token)
+      resp = put("external_clients/profile/#{client_id}", test_case, api_token)
       resp.status_200?
       client = Backend::App::Users.by_id(client_id, true)
       resp.eq?(client.discount_percent, test_case[:discount_percent].to_i)
       resp.eq?(client.paid_a_deposit?, test_case[:paid_a_deposit].boolean_true?)
     end
     
-    resp = put("external_clients/#{client_id}", {}, api_token)
+    resp = put("external_clients/profile/#{client_id}", {}, api_token)
     client = Backend::App::Users.by_id(client_id, true)
     resp.eq?(client.discount_percent, cases[-1][:discount_percent].to_i)
     resp.eq?(client.paid_a_deposit?, cases[-1][:paid_a_deposit].boolean_true?)
@@ -278,7 +306,7 @@ namespace :clients do
 
     cases_fails.each do |test_case|
       details_msg('INFO', "Loading test case: #{test_case}")
-      resp = put("external_clients/#{client_id}", test_case, api_token)
+      resp = put("external_clients/profile/#{client_id}", test_case, api_token)
       resp.status_403?
     end
 
@@ -287,12 +315,11 @@ namespace :clients do
 
   task create_success_with_flag_change_password: :environment do |t|
     phone_number = "078528#{ "%02d" % rand(1000..9999) }"
-    # phone_number = '0898151414'
     
     resp = create_client(phone_number)
     resp.message_eq?('Tạo client thành công')
 
-    # force_reset_default_password_by_phone(phone_number) # 123456
+    force_reset_default_password_by_phone(phone_number) # 123456
     resp = client_login(phone_number, ENV['DEFAULT_PASSWORD'])
     resp.eq?(resp['notifications']['hint'], 'need_change_password')
 
@@ -313,6 +340,15 @@ namespace :clients do
     resp = create_client("078528#{ "%02d" % rand(1000..9999) }", false)
     resp.status_403?
   end
+  
+  task find_customer_basic_info: :environment do |t|
+    client_login('0788756946', '123456')
+    # binding.pry
+    resp = get('external_clients/delivery/purchaser_info', {search_term: 'x', search_field: 'purchaser_phone', okiela_24_7_nationwide_flag: 3 }, api_token)
+
+    resp.status_200?
+    binding.pry
+  end
 
   task simple_price_check: :environment do |t|
     (1..63).to_a.map { |id| { package_weight: "#{id}00", city_id: id } }.each do |params|
@@ -331,11 +367,26 @@ namespace :clients do
     success_msg('API external_clients/delivery/simple_price_check is OK')
   end
 
-  task price_check: :environment do |t|
-    client = run('clients:login_success', true)
-    @tolerance = 5 # minutes
-    @test_validation = false
+  task expected_delivery_times: :environment do
+    params = {
+      client_id: 28036484,
+      package_weight: '2000',
+      size: '10.6x5.1x30',
+      shop_dropoff_id: '27993016',
+      city_id: 50,
+      district_id: 563
+    }
+    a = Backend::App::OrderServices::OkieLaDeliveryFeeGenerator.new(params).process
+    binding.pry
+  end
 
+  task price_check: :environment do |t|
+    # client = run('clients:login_success', true)
+    client_login('0785286466', ENV['DEFAULT_PASSWORD'])
+    @tolerance = 5 # minutes
+    @test_validation = true
+
+    binding.pry
     params = {
       package_weight: '2000',
       size: '10.6x5.1x30',
@@ -343,7 +394,7 @@ namespace :clients do
       city_id: 50,
       district_id: 563
     }
-    
+
     # # # = = = = TEST VALIDATION = = = =
     if @test_validation
       success_msg('Validation tesing: Vui lòng nhập các thông tin')
@@ -398,6 +449,68 @@ namespace :clients do
       resp.status_200?
     end
     # # = = = = END TEST VALIDATION = = = =
+
+    # # = = = = START TEST RESPONSE RESULT = = = =
+    success_msg('Test response results with delivery method and okiela_24_7_nationwide_flag: 3 results')
+    resp = get('external_clients/delivery/price_check', params, api_token)
+    resp.status_200?
+    resp.eq?(resp['price_check'].count, 3)
+    resp.eq?(resp['price_check'].map{|e| [e['delivery_method'], e['delivery_oll_type']]}, [["normal", "okiela_24_7_drop_off_deliver"], ["fast", "okiela_24_7_drop_off_deliver"], ["normal", "okiela_24_7_drop_off_pickup"]])
+
+    extra_params = { delivery_method: 'normal' }
+    success_msg("Test response results with delivery method and oll_type (#{extra_params}): 2 results ")
+    resp = get('external_clients/delivery/price_check', params.merge(extra_params), api_token)
+    resp.status_200?
+    resp.eq?(resp['price_check'].count, 2)
+    resp.eq?(resp['price_check'].map{|e| [e['delivery_method'], e['delivery_oll_type']]}, [["normal", "okiela_24_7_drop_off_deliver"], ["normal", "okiela_24_7_drop_off_pickup"]])
+
+    extra_params = { delivery_method: 'normal', okiela_24_7_nationwide_flag: '2' }
+    success_msg("Test response results with delivery method and oll_type (#{extra_params}): 1 results ")
+    resp = get('external_clients/delivery/price_check', params.merge(extra_params), api_token)
+    resp.status_200?
+    resp.eq?(resp['price_check'].count, 1)
+    resp.eq?(resp['price_check'].map{|e| [e['delivery_method'], e['delivery_oll_type']]}, [["normal", "okiela_24_7_drop_off_deliver"]])
+
+    extra_params = { delivery_method: 'normal', okiela_24_7_nationwide_flag: '3' }
+    success_msg("Test response results with delivery method and oll_type (#{extra_params}): 1 results ")
+    resp = get('external_clients/delivery/price_check', params.merge(extra_params), api_token)
+    resp.status_200?
+    resp.eq?(resp['price_check'].count, 1)
+    resp.eq?(resp['price_check'].map{|e| [e['delivery_method'], e['delivery_oll_type']]}, [["normal", "okiela_24_7_drop_off_pickup"]])
+
+    extra_params = { delivery_method: 'fast', okiela_24_7_nationwide_flag: '3' }
+    success_msg("Test response results with delivery method and oll_type (#{extra_params}): 1 results ")
+    resp = get('external_clients/delivery/price_check', params.merge(extra_params), api_token)
+    resp.status_200?
+    resp.eq?(resp['price_check'].count, 1)
+    resp.eq?(resp['price_check'].map{|e| [e['delivery_method'], e['delivery_oll_type']]}, [["fast", "okiela_24_7_drop_off_deliver"]])
+
+    extra_params = { delivery_method: 'fast' }
+    success_msg("Test response results with delivery method and oll_type (#{extra_params}): 1 results ")
+    resp = get('external_clients/delivery/price_check', params.merge(extra_params), api_token)
+    resp.status_200?
+    resp.eq?(resp['price_check'].count, 1)
+    resp.eq?(resp['price_check'].map{|e| [e['delivery_method'], e['delivery_oll_type']]}, [["fast", "okiela_24_7_drop_off_deliver"]])
+
+    extra_params = { delivery_method: 'fast', okiela_24_7_nationwide_flag: '2' }
+    success_msg("Test response results with delivery method and oll_type (#{extra_params}): 1 results ")
+    resp = get('external_clients/delivery/price_check', params.merge(extra_params), api_token)
+    resp.status_200?
+    resp.eq?(resp['price_check'].count, 1)
+    resp.eq?(resp['price_check'].map{|e| [e['delivery_method'], e['delivery_oll_type']]}, [["fast", "okiela_24_7_drop_off_deliver"]])
+
+    extra_params = { delivery_method: 'normal', district_id: 566, city_id: 50 }
+    success_msg("Test response results with delivery method and oll_type (#{extra_params}): 1 results and ignore GIAO CHẬM GẦN NHÀ")
+    resp = get('external_clients/delivery/price_check', params.merge(extra_params), api_token)
+    resp.status_200?
+    resp.eq?(resp['price_check'].count, 1)
+
+    extra_params = { district_id: 566, city_id: 50 }
+    success_msg("Test response results with delivery method and oll_type (#{extra_params}): 2 results and ignore GIAO CHẬM GẦN NHÀ")
+    resp = get('external_clients/delivery/price_check', params.merge(extra_params), api_token)
+    resp.status_200?
+    resp.eq?(resp['price_check'].count, 2)
+    # # = = = = END TEST RESPONSE RESULT = = = =
 
     # = = = = TEST DATA = = = =
     kien_xuong = 
@@ -676,7 +789,6 @@ namespace :clients do
         success_msg "Processing test case: #{fect_province_and_district_name(test_case[:data])} - #{test_case[:data]} ..."
         success_msg "_ _ _ Normal expected: #{test_case[:expected][:normal]}"
         success_msg "_ _ _ Fast expected: #{test_case[:expected][:fast]}"
-        binding.pry
         params[:check_free_deliveries] = true
         resp = get('external_clients/delivery/price_check', params.merge(test_case[:data]), api_token)
         resp.status_200?
@@ -685,7 +797,17 @@ namespace :clients do
             expected_deliver_time = Time.parse(delivery_method['expected_deliver_time'], '%Y-%m-%d %H:%M:%S %z')
             expected_deliver_max_time = Time.parse(delivery_method['expected_deliver_max_time'], '%Y-%m-%d %H:%M:%S %z')
             key = delivery_method['delivery_method'].to_sym
-            delivery_method_name = key == :normal ? 'DỊCH VỤ BÌNH THƯỜNG' : 'DỊCH VỤ NHANH'
+            delivery_method_name =
+              if key == :normal
+                if delivery_method['delivery_oll_type'] == 'okiela_24_7_drop_off_pickup'
+                  'DỊCH VỤ BÌNH THƯỜNG - GẦN NHÀ'
+                else
+                  'DỊCH VỤ BÌNH THƯỜNG - TẬN TAY'
+                end
+              else
+                'DỊCH VỤ NHANH - TẬN TAY'
+              end
+
             resp.eq?(delivery_method_name, delivery_method['delivery_method_name'])
             resp.eq?(delivery_method['okiela_24_7_delivery_fee'].to_i, test_case[:expected][key][:cost].to_i)
             resp.lt?(expected_deliver_time, test_case[:expected][key][:expected_deliver_time])
@@ -878,8 +1000,8 @@ namespace :clients do
       shop_town: '',
       shop_district: 'Quận Tân Bình',
       shop_city: 'HCM',
-      discount_percent: '25',
-      paid_a_deposit: 'true'
+      discount_percent: '99',
+      client_free_expirfalse: '20/12/2018'
     }
 
     post('external_clients', client_params, api_token)

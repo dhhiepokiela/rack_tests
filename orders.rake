@@ -39,6 +39,14 @@ namespace :orders do
     end
   end
 
+  task client_report: :environment do |t|
+    irb_cmd([
+      Backend::App::AnalyticsServices::KpiClientOrderCombinedStatistic.new(start_date: Time.parse('2018-01-01'), end_date: Time.now, email: 'score_kpi_dev@okiela.com').gather_report,
+      Backend::App::AnalyticsServices::KpiClientOrderCombinedStatistic.new(start_date: Time.parse('2018-01-01'), end_date: Time.now, email: 'phai.nguyen@okiela.com').gather_report,
+      Backend::App::AnalyticsServices::KpiClientOrderCombinedStatistic.new(start_date: Time.parse('2018-01-01'), end_date: Time.now, email: 'hoanghiepitvnn@gmail.com').gather_report
+    ])
+  end
+
   task logistic_order_work_flow: :environment do |t|
     starting(t)
     dashboard_logistic_login!
@@ -119,6 +127,30 @@ namespace :orders do
     # run('orders:order_details')
     # run('orders:display_client_order_statistics')
     pass(t)
+  end
+
+  # Test update_mode_of_payment 'Không có địa điểm nào gần tôi'
+  task update_mode_of_payment: :environment do |t|
+    buyer_login('01285286828')
+    params = {
+      address_type: 'manual_input',
+      city: 'Hồ Chí Minh',
+      district: 'Quận 8',
+      latitude: '10.747580',
+      longitude: '106.688994',
+      mode_of_payment: 'okiela_24_7',
+      name: 'Hiep Dinh',
+      okiela_24_7_nationwide_flag: '2',
+      order_id: '28037950',
+      phone: '01285286828',
+      shipping_fee_amount: '20000',
+      skip_verify_exist_phone: '1',
+      street: '147 Dương Bá Trạc',
+      ward: 'Phường 1'
+    }
+
+    resp = put('orders/buyer/update_mode_of_payment', params, api_token)
+    resp.status_200?
   end
 
   # rake -f rake_tests/orders.rake orders:driver_pickup_order MODE=dev DISPLAY_TIMES=1 CODE=MD53503082 PRESS_KEY_CONTINUE=true

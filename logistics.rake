@@ -18,6 +18,17 @@ namespace :logistics do
     resp.status_200?
   end
 
+  task manager_mark_pending_deliver_order: :environment do |t|
+    starting(t)
+    run('logistics:admin_dashboard_login', true)
+    resp = put('logistics/manager_mark_pending_deliver_order', { order_id: '28044136', scheduler_note: 'test'}, api_token)
+    binding.pry
+
+    client_login('0386222229', ENV['DEFAULT_PASSWORD'])
+    resp = put('external_clients/delivery/orders/feedback_order', {feedback_status: :deliver_again, force_cancel: true, force_send_sms: false, order_id: 28044136} , api_token)
+  end
+
+
   task manager_update_package_weight: :environment do |t|
     starting(t)
     run('logistics:admin_dashboard_login', true)
@@ -50,6 +61,43 @@ namespace :logistics do
 
     pass(t)
   end
+
+  task order_shop_dropoffs: :environment do |t|
+    starting(t)
+
+    run('logistics:admin_dashboard_login', true)
+
+    resp_shop_dropoffs = get('logistics/orders/shop_dropoffs', {
+      limit: "500",
+      offset: "0",
+      oll_type: "all",
+      order_by: "purchase_date",
+      order_direction: "desc",
+      order_type: "dashboard_pending",
+      view_type: "dashboard_tiny_info"
+    }, api_token)
+
+    resp_shop_dropoffs['shop_dropoffs']['items'].each do |shop_dropoff|
+      change_to_dev_server!
+      resp_orders = get('logistics/orders', {
+        limit: "500",
+        offset: "0",
+        oll_type: "all",
+        order_by: "purchase_date",
+        order_direction: "desc",
+        order_type: "dashboard_pending",
+        shop_dropoff: shop_dropoff['id'],
+        view_type: "dashboard_tiny_info"
+      }, api_token)
+
+      client_orders = resp_orders['orders']['items'].select{|order| order['creator'] == 'client' }
+      next if client_orders.count >= 500
+      details_msg("INFO", "ID: ##{shop_dropoff['id']} - Name: #{shop_dropoff['name']} - Order: #{shop_dropoff['total_order']} - Client aggs vs loead: #{shop_dropoff['total_client_order']} vs #{client_orders.count}")
+      resp_orders.eq?(client_orders.count, shop_dropoff['total_client_order'])
+    end
+
+    pass(t)
+  end 
 
   task update_dropoff_owner: :environment do |t|
     starting(t)
@@ -297,12 +345,16 @@ namespace :logistics do
     starting(t)
     run('logistics:admin_dashboard_login', true)
     # phone_number = '0785285914'
-    phone_number = '0785289526'
+    phone_number = '0788756946'
     client = Backend::App::Users.by_parameters(phone: phone_number)
-    details_msg('INFO', "allow_select_delivery_method? #{client.allow_select_delivery_method?}")
+    details_msg('INFO', "client_free_deliveries_number: #{client.client_free_deliveries_number}")
+    details_msg('INFO', "client_total_ordered: #{client.client_total_ordered}")
+    details_msg('INFO', "client_has_free_deliveries_number?: #{client.client_has_free_deliveries_number?}")
+    details_msg('INFO', "client_free_not_expired?: #{client.client_free_not_expired?}")
+    details_msg('INFO', "client_can_apply_free_deliveries?: #{client.client_can_apply_free_deliveries?}")
 
     resp = post('logistics/delivery/import_order', {
-      order_data: sample_data_for_import_orders,
+      order_data: JSON.parse(sample_data_for_import_orders)[0..5].to_json,
       file_name: 'test.txt',
       client_id: client.id,
       email: 'hoanghiepitvnn@gmail.com'
@@ -314,20 +366,25 @@ namespace :logistics do
     details_msg('Action', 'Calling task \'rake job_queues:process\' ...')
     # run_sys_cmd(['rake job_queues:process'])
     client = Backend::App::Users.by_id(client.id, true)
-    details_msg('INFO', "allow_select_delivery_method? #{client.allow_select_delivery_method?}")
+    puts "\n======\n"
+    details_msg('INFO', "client_free_deliveries_number: #{client.client_free_deliveries_number}")
+    details_msg('INFO', "client_total_ordered: #{client.client_total_ordered}")
+    details_msg('INFO', "client_has_free_deliveries_number?: #{client.client_has_free_deliveries_number?}")
+    details_msg('INFO', "client_free_not_expired?: #{client.client_free_not_expired?}")
+    details_msg('INFO', "client_can_apply_free_deliveries?: #{client.client_can_apply_free_deliveries?}")
     pass(t)
   end
 
   task finance_receive_multi_dropoff_payment: :environment do |t|
     run('logistics:admin_account_login', true)
     order_code_list = []
-    orders = load_finance_receive_multi_dropoff_payment_orders
+    orders = load_finance_receive_multi_dropoff_payment_orders(10)
     details_msg('INFO', "Orders: #{orders.join(', ')}")
     orders.each_with_index do |code, index|
       order_code_list << {
         'code' => code,
         'mode_of_payment' => '1',
-        'money_received_date' => index.days_ago.strftime('%Y-%m-%d %H:%M')
+        'money_received_date' => Time.now.strftime('%d/%m/%Y')
       }
     end
 
@@ -985,13 +1042,15 @@ namespace :logistics do
     end
   end
 
-  def load_finance_receive_multi_dropoff_payment_orders(limit: 5)
+  def load_finance_receive_multi_dropoff_payment_orders(limit = 5)
     sql =
       <<-SQL
         select code
         from res_order
         where order_status = 'completed' AND logistic_order_status IN ('delivered','money_paid') AND money_received_date IS NULL
-        LIMIT #{limit} OFFSET 0
+        ORDER BY entity_id DESC
+        LIMIT #{limit}
+        OFFSET #{20}
       SQL
 
     execute_sql(sql).to_a.map{|o| o[:code]}

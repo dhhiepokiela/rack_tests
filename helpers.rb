@@ -87,6 +87,13 @@ def environment_dev?
   ENV['MODE'].to_s.downcase == 'dev'
 end
 
+def subject
+  change_to_dev_server!
+  @resp ||= get('')
+  set_default_server!
+  @resp
+end
+
 HTTParty::Response.class_eval do
   [200, 201, 400, 403, 404, 500].each do |code|
     define_method("status_#{code}?") do
@@ -165,6 +172,18 @@ def user_login(phone, password)
     post('auth/login', {
       phone: phone, 
       password: password
+    }).store_api_token_and_return
+  set_default_server!
+  data
+end
+
+def buyer_login(phone)
+  change_to_dev_server! if login_on_dev?
+  user = Backend::App::Users.by_parameters(phone: phone, auth_system: 'facebook')
+  data =
+    get('auth/facebook', {
+      facebook_id: user.auth_facebook_id,
+      token: user.auth_facebook_token
     }).store_api_token_and_return
   set_default_server!
   data
@@ -319,6 +338,16 @@ def force_reset_default_password_by_phone(phone)
   execute_sql(sql)
 end
 
+def remove_facebook_token(auth_facebook_id)
+  sql =
+    <<-SQL
+      update res_user
+      set auth_facebook_id = NULL AND auth_facebook_token = NULL
+      where auth_facebook_id = '#{auth_facebook_id}'
+    SQL
+  execute_sql(sql)
+end
+
 def db_connection
   DatabasePool.get_connector
 end
@@ -461,6 +490,13 @@ def reload!
     end
   end
 
+  ['override'].each do |file_name|
+    begin
+      load("root_dir/#{file_name}.rb") rescue nil 
+    rescue Exception => e
+    end
+  end
+  
   # Return true when complete.
   true
 end
