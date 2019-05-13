@@ -14,6 +14,8 @@ namespace :clients do
     run('clients:simple_price_check')
   end
 
+
+
   task login_success: :environment do |t|
     resp = client_login(ENV['PHONE_NUMBER'], ENV['DEFAULT_PASSWORD'])
     resp.status_200?
@@ -31,16 +33,37 @@ namespace :clients do
 
   task reset_password: :environment do |t|
     resp = put('auth/reset-password', {
-      phone: ENV['PHONE_NUMBER'], 
+      phone: ENV['PHONE_NUMBER'],
       client_type: :web_ex_client
     })
     resp.status_200?
   end
 
+  task search_simple_orders: :environment do |t|
+    # resp1 = get('external_clients/delivery/simple_orders', {search_term: 'nguyễn'}, api_secret)
+    # puts "resp1: #{resp1['orders']['total']}"
+    # resp2 = get('external_clients/delivery/simple_orders', {search_client_id: '28031951'}, api_secret)
+    # puts "resp2: #{resp2['orders']['total']}"
+    # resp3 = get('external_clients/delivery/simple_orders', {search_client_phone: '0322222222'}, api_secret)
+    # puts "resp3: #{resp3['orders']['total']}"
+    # resp5 = get('external_clients/delivery/simple_orders', {search_shop_id: '28031952'}, api_secret)
+    # puts "resp5: #{resp5['orders']['total']}"
+
+    resp4 = get('external_clients/delivery/simple_orders', {search_shop_name: 'nguyen'}, api_secret)
+    puts "resp4: #{resp4['orders']['total']}"
+    binding.pry
+  end
+
+  task get_order_detailt_without_purchaser_note: :environment do
+    agent_login('0399999999', '123456')
+    resp = get('/agents/orders/28087070?id=28087070', {}, api_token)
+    puts resp['order']['purchaser_note']
+  end
+
   task prevent_force_logout: :environment do
     client_login('0386222224', '123456')
     resp = get('auth', {}, api_token)
-    
+
     resp.message_eq?('Phiên làm việc hữu hạn tìm thấy.')
     details_msg('INFO', 'CLient logged in')
 
@@ -53,7 +76,7 @@ namespace :clients do
     resp = get('auth', {}, api_token)
     resp.message_eq?('Phiên làm việc hữu hạn tìm thấy.')
     details_msg('INFO', 'CLient still logged in')
-    
+
     get("external_clients/delivery/orders/28034260/active_tracing?id=28034260", {}, api_token).status_200?
     resp = get('auth', {}, api_token)
     resp.message_eq?('Phiên làm việc hữu hạn tìm thấy.')
@@ -64,6 +87,65 @@ namespace :clients do
     client = Backend::App::Users.by_parameters(phone: '0386222224')
     order = Backend::App::Orders.by_id(28032798)
     Backend::App::Orders.by_parameters(client_id: client.id, return_count: true, limit: false)
+  end
+
+  task active_tracing: :environment do |t|
+    client_login('0322222222', '123456')
+    resp = get('/external_clients/delivery/orders/28033124/active_tracing?id=28033124', {}, api_token)
+    resp.status_200?
+    binding.pry
+  end
+
+  task debug_client_order_pending_cancel: :environment do |t|
+    client_login('0322222222', '123456')
+
+    params = {
+      purchaser_address: 'Test',
+      shop_dropoff: '584327',
+      purchaser_name: 'Test Full',
+      purchaser_district: 'Quận 5',
+      delivery_original_price: '500000',
+      is_fragile: '0',
+      purchaser_phone: '0898151616',
+      purchaser_ward: 'Phường 10',
+      check_before_accept: '0',
+      delivery_method: 'normal',
+      okiela_24_7_nationwide_flag: '2',
+      product_name: 'chite',
+      purchaser_city: 'Hồ Chí Minh',
+      package_weight: '1500',
+      buyer_pay_delivery_fee: '1'
+    }
+
+    resp = post('external_clients/delivery/orders', params, api_token)
+    binding.pry
+
+    # get('external_clients/delivery/orders?client_order_status=cancelled_pending_pickup&end_date=1547612123.931990&limit=15&offset=0&start_date=1546966800.000000', {}, api_token)['orders']['items'].map{|e| e['code']}.uniq
+  end
+
+  task get_okiela_drop_off_address: :environment do |t|
+    client_login('0322222222', '123456')
+
+    # Benchmark.ips do |x|
+    #   # Configure the number of seconds used during
+    #   # the warmup phase (default 2) and calculation phase (default 5)
+    #   x.config(:time => 5, :warmup => 2)
+
+    #   # Typical mode, runs the block as many times as it can
+    #   x.report("old") {
+    #     get('powered_locations?scope=districts&super_scope_id=2', {}, api_token)
+    #   }
+
+    #   x.report("new") {
+    #     get('powered_locations2?scope=districts&super_scope_id=2', {}, api_token)
+    #   }
+
+    #   # Compare the iterations per second of the various reports!
+    #   x.compare!
+    # end
+
+    puts get('powered_locations?scope=districts&super_scope_id=2', {}, api_token)
+    # binding.pry
   end
 
   task get_public_okiela_drop_off_address: :environment do |t|
@@ -121,7 +203,7 @@ namespace :clients do
     resp.status_403?
     pass(t)
 
-    
+
   end
 
   task create_single_delivery_orders: :environment do |t|
@@ -212,7 +294,7 @@ namespace :clients do
       auth_system: Backend::App::User::AUTH_SYSTEM[:client],
       limit: 1
     }
-    
+
     resp = post("auth/reset-password", {
       phone: ENV['PHONE_NUMBER'],
       token: Backend::App::Users.by_parameters(auth_params).auth_reset_password,
@@ -247,7 +329,7 @@ namespace :clients do
     %w[078].each do |prefix|
       phone_number = "#{prefix}8#{ "%02d" % rand(100000..999999) }"
       # phone_number = '0785286828'
-      
+
       resp = create_client(phone_number)
       resp.status_200?
       client = Backend::App::Users.by_id(resp['resource']['client']['id'], true)
@@ -264,7 +346,60 @@ namespace :clients do
 
       resp = put('auth/change-password', {phone: phone_number, old_password: ENV['NEW_PASSWORD'], new_password: ENV['DEFAULT_PASSWORD']}, api_token)
       resp.status_201?
-      
+
+      resp = client_login(phone_number, ENV['DEFAULT_PASSWORD'])
+      resp.eq?(resp['notifications']['hint'].blank?, true)
+      resp.status_200?
+
+      binding.pry
+    end
+  end
+
+  task create_success_2: :environment do |t|
+    ensure_loged_in
+
+    1000.times do
+      %w[078].each do |prefix|
+        phone_number = "#{prefix}8#{ "%02d" % rand(100000..999999) }"
+        begin
+          resp = create_client(phone_number, false)
+          force_reset_default_password_by_phone(phone_number) # 123456
+          resp.status_200?
+
+          # total_found = get("logistics/shops?limit=50&offset=0&order_by=register_oll_at&order_direction=desc&owner_type=client&search_term=#{phone_number}&status=is_unassigned", {}, api_token)
+          # if total_found['shops']['total'] <= 0
+          #   # binding.pry
+          # end
+        rescue Exception => e
+          puts e.message
+          # binding.pry
+        end
+      end
+    end
+  end
+
+  task create_success: :environment do |t|
+    %w[078].each do |prefix|
+      phone_number = "#{prefix}8#{ "%02d" % rand(100000..999999) }"
+      # phone_number = '0785286828'
+
+      resp = create_client(phone_number)
+      resp.status_200?
+      client = Backend::App::Users.by_id(resp['resource']['client']['id'], true)
+      resp.eq?(client.discount_percent, 99)
+      resp.eq?(client.paid_a_deposit?, false)
+
+      force_reset_default_password_by_phone(phone_number) # 123456
+      resp = client_login(phone_number, ENV['DEFAULT_PASSWORD'])
+      resp.status_201?
+      resp.eq?(resp['notifications']['hint'], 'need_change_password')
+
+      resp = put('auth/change-password', {phone: phone_number, old_password: ENV['DEFAULT_PASSWORD'], new_password: ENV['NEW_PASSWORD']}, api_token)
+      resp.status_201?
+
+      resp = put('auth/change-password', {phone: phone_number, old_password: ENV['NEW_PASSWORD'], new_password: ENV['DEFAULT_PASSWORD']}, api_token)
+      resp.status_201?
+
       resp = client_login(phone_number, ENV['DEFAULT_PASSWORD'])
       resp.eq?(resp['notifications']['hint'].blank?, true)
       resp.status_200?
@@ -292,7 +427,7 @@ namespace :clients do
       resp.eq?(client.discount_percent, test_case[:discount_percent].to_i)
       resp.eq?(client.paid_a_deposit?, test_case[:paid_a_deposit].boolean_true?)
     end
-    
+
     resp = put("external_clients/profile/#{client_id}", {}, api_token)
     client = Backend::App::Users.by_id(client_id, true)
     resp.eq?(client.discount_percent, cases[-1][:discount_percent].to_i)
@@ -315,7 +450,7 @@ namespace :clients do
 
   task create_success_with_flag_change_password: :environment do |t|
     phone_number = "078528#{ "%02d" % rand(1000..9999) }"
-    
+
     resp = create_client(phone_number)
     resp.message_eq?('Tạo client thành công')
 
@@ -340,11 +475,11 @@ namespace :clients do
     resp = create_client("078528#{ "%02d" % rand(1000..9999) }", false)
     resp.status_403?
   end
-  
+
   task find_customer_basic_info: :environment do |t|
     client_login('0788756946', '123456')
     # binding.pry
-    resp = get('external_clients/delivery/purchaser_info', {search_term: 'x', search_field: 'purchaser_phone', okiela_24_7_nationwide_flag: 3 }, api_token)
+    resp = get('external_clients/delivery/purchaser_info', {search_term: '0', search_field: 'purchaser_phone', okiela_24_7_nationwide_flag: 3 }, api_token)
 
     resp.status_200?
     binding.pry
@@ -384,9 +519,8 @@ namespace :clients do
     # client = run('clients:login_success', true)
     client_login('0785286466', ENV['DEFAULT_PASSWORD'])
     @tolerance = 5 # minutes
-    @test_validation = true
+    @test_validation = false
 
-    binding.pry
     params = {
       package_weight: '2000',
       size: '10.6x5.1x30',
@@ -394,6 +528,8 @@ namespace :clients do
       city_id: 50,
       district_id: 563
     }
+
+    resp = get('external_clients/delivery/price_check', params.merge(city_id: 50, district_id: 566), api_token)
 
     # # # = = = = TEST VALIDATION = = = =
     if @test_validation
@@ -410,7 +546,7 @@ namespace :clients do
         resp.status_403?
         resp.message_eq?('Kích thước không hợp lệ')
       end
-      
+
       success_msg('Validation tesing: Khối lượng không hợp lệ')
       %w[20001 -1 0].each do |key|
         resp = get('external_clients/delivery/price_check', params.merge(package_weight: key), api_token)
@@ -513,7 +649,7 @@ namespace :clients do
     # # = = = = END TEST RESPONSE RESULT = = = =
 
     # = = = = TEST DATA = = = =
-    kien_xuong = 
+    kien_xuong =
       build_test_data_json({
         district_id: 281,
         province_id: 25,
@@ -534,7 +670,7 @@ namespace :clients do
         fast_deliver_time: '72-96|96-120'
       })
 
-    kien_xuong_with_pickup_date = 
+    kien_xuong_with_pickup_date =
       build_test_data_json({
         district_id: 281,
         province_id: 25,
@@ -556,7 +692,7 @@ namespace :clients do
         fast_deliver_time: '72-96|96-120'
       })
 
-    chau_doc = 
+    chau_doc =
       build_test_data_json({ # Châu Đốc
         district_id: 564,
         province_id: 50,
@@ -577,7 +713,7 @@ namespace :clients do
         fast_deliver_time: '24-48|48-72'
       })
 
-    chau_thanh_a = 
+    chau_thanh_a =
       build_test_data_json({ # Châu Thành A - Hậu Giang
         district_id: 686,
         province_id: 63,
@@ -598,7 +734,7 @@ namespace :clients do
         fast_deliver_time: '48-72|72-96'
       })
 
-    tan_chau = 
+    tan_chau =
       build_test_data_json({ # Tân Châu An Giang
         district_id: 566,
         province_id: 50,
@@ -619,7 +755,7 @@ namespace :clients do
         fast_deliver_time: '48-72|72-96'
       })
 
-    vinh_yen = 
+    vinh_yen =
       build_test_data_json({
         district_id: 186,
         province_id: 16,
@@ -640,7 +776,7 @@ namespace :clients do
         fast_deliver_time: '48-72|72-96'
       })
 
-    thanh_pho_dien_bien = 
+    thanh_pho_dien_bien =
       build_test_data_json({
         district_id: 664,
         province_id: 61,
@@ -661,7 +797,7 @@ namespace :clients do
         fast_deliver_time: '48-72|72-96'
       })
 
-    huyen_dien_bien = 
+    huyen_dien_bien =
       build_test_data_json({
         district_id: 666,
         province_id: 61,
@@ -682,7 +818,7 @@ namespace :clients do
         custom_fast_cost_expect: 114500 + 8500 * 8
       })
 
-    dien_bien_dong = 
+    dien_bien_dong =
       build_test_data_json({
         district_id: 670,
         province_id: 61,
@@ -703,7 +839,7 @@ namespace :clients do
         custom_fast_cost_expect: 114500 + 8500 * 8
       })
 
-    quynh_coi = 
+    quynh_coi =
       build_test_data_json({
         district_id: 728,
         province_id: 25,
@@ -745,7 +881,7 @@ namespace :clients do
         normal_deliver_time: '24-48|48-72',
         fast_deliver_time: '24-48|48-72'
       })
-    
+
     hcm_can_gio = # HCM Huyện Cần Giờ
       build_test_data_json({
         hcm: true,
@@ -823,7 +959,7 @@ namespace :clients do
     end
     # = = = = END TEST DATA = = = =
   end
-  
+
   def parse_datetime_from_hour(base = Time.now, hour = 0, extra = 0)
     (base + (hour * 60 * 60) + (extra * 60))
   end
@@ -992,7 +1128,7 @@ namespace :clients do
       forename: 'Tester',
       surname: "Client #{suffix}",
       phone: phone_number,
-      email: "client_tester_#{suffix}@okiela.com",
+      email: "client_tester_#{suffix}_#{Time.now.to_i}@okiela.com",
       client_free_deliveries_number: 2,
       shop_name: "Shop ##{suffix}",
       shop_street: "#{suffix} Tan Ky Tan Quy",
@@ -1001,7 +1137,8 @@ namespace :clients do
       shop_district: 'Quận Tân Bình',
       shop_city: 'HCM',
       discount_percent: '99',
-      client_free_expirfalse: '20/12/2018'
+      paid_a_deposit: "1",
+      client_free_expired_date: "15/03/2019"
     }
 
     post('external_clients', client_params, api_token)

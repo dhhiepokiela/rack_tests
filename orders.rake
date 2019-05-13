@@ -53,20 +53,23 @@ namespace :orders do
 
     ENV['ID'] = Backend::App::Orders.by_parameters(code: ENV['CODE']).id.to_s if ENV['ID'].blank? && ENV['CODE'].present?
     order = Backend::App::Orders.by_id(ENV['ID'], true)
+    order.shop_id = 28039568
+    order.save
 
     ENV['DISPLAY_TIMES'] = '1' # FOR display_client_order_statistics
     run('orders:order_details')
     run('orders:display_client_order_statistics')
 
+    dashboard_logistic_login!
     resp = post('logistics/manager_change_oll_order_type', { 
       order_id: order.id, 
       new_okiela_24_7_nationwide_flag: 2
-    }, api_token)
+    }, api_token) 
 
     current_user = dashboard_logistic_login!
     default_final_dropoff_id = 28012327
-    default_pickup_driver_id = 391202 # Chau Angela Nguyen
-    # default_pickup_driver_id = 582233
+    # default_pickup_driver_id = 391202 # Chau Angela Nguyen
+    default_pickup_driver_id = 582233
     default_deliver_driver_id = 582233 # Sabrih Hoang
 
     resp = get("logistics/orders/#{order.id}/get_okiela_drop_off_address", {}, api_token)

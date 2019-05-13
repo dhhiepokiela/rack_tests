@@ -51,6 +51,10 @@ def post(path, params = {}, headers = {})
   HTTParty.post("#{ENV['BASE_URL_API']}/#{path}", body: params, headers: build_headers.merge(headers), timeout: ENV['REQUEST_TIMEOUT'].to_i)
 end
 
+def delete(path, params = {}, headers = {})
+  HTTParty.delete("#{ENV['BASE_URL_API']}/#{path}", body: params, headers: build_headers.merge(headers), timeout: ENV['REQUEST_TIMEOUT'].to_i)
+end
+
 def debug_mode?
   ENV['DEBUG_MODE'] == true
 end
@@ -74,7 +78,7 @@ def change_to_dev_server!
 end
 
 def set_default_server!
-  ENV['BASE_URL_API'] = 
+  ENV['BASE_URL_API'] =
     case ENV['MODE'].to_s.downcase
     when 'dev'
       ENV['DEV_BASE_URL_API']
@@ -170,7 +174,7 @@ def user_login(phone, password)
   change_to_dev_server! if login_on_dev?
   data =
     post('auth/login', {
-      phone: phone, 
+      phone: phone,
       password: password
     }).store_api_token_and_return
   set_default_server!
@@ -193,7 +197,7 @@ def client_login(phone, password)
   change_to_dev_server! if login_on_dev?
   data =
     post('auth/login_client', {
-      phone: phone, 
+      phone: phone,
       password: password
     }).store_api_token_and_return
   set_default_server!
@@ -204,7 +208,7 @@ def logistic_login(phone, password)
   change_to_dev_server! if login_on_dev?
   data =
     post('auth/login_logistic', {
-      phone: phone, 
+      phone: phone,
       password: password
     }).store_api_token_and_return
   set_default_server!
@@ -287,7 +291,17 @@ end
 def details_msg(title = '', msg = '', new_line: true, color: :light_cyan)
   print "#{title.colorize(:blue)}: " if title.present?
   print msg.to_s.colorize(color)
-  print "\n" if new_line 
+  print "\n" if new_line
+end
+
+def execute_with_msg(msg)
+  details_msg("INFO", "#{msg} ... ", new_line: false)
+
+  if yield
+    details_msg("", "OK", new_line: true, color: :green)
+  else
+    details_msg("", "Failed", new_line: true, color: :red)
+  end
 end
 
 def info_msg(msg = '')
@@ -379,6 +393,7 @@ def ssh_exec(host, user, exe_commands = [], debug = true)
     details_msg(server_name, "Using last session ...")
   else
     details_msg(server_name, "Connection is establishing ...")
+    net_ssh_force_sha1_login!
     ssh_connection = Net::SSH.start(host, user)
     @telnet_connection = Net::SSH::Telnet.new(
       'Session' => ssh_connection,
@@ -404,7 +419,6 @@ def ssh_exec(host, user, exe_commands = [], debug = true)
     puts output
   end
   success_msg("\n= = = = = SSH #{host.upcase} END OUTPUT = = = = =\n")
-  # @telnet_connection.close
 end
 
 def sync_es
@@ -431,11 +445,6 @@ def run_sys_cmd(commands, ssh_servers: ['dev1', 'dev2'], sudo: true)
     commands.each do |command|
       %x( #{command} )
     end
-    # Open3.popen3(command) do |stdin, stdout, stderr, thread|
-    #   pid = thread.pid
-    #   stdout.read.chomp
-    #   puts "run_sys_cmd: #{pid} #{command}"
-    # end
   end
 end
 
@@ -470,7 +479,7 @@ def continue_story
   print "\nPress any key to continue ...\n"
   STDIN.getch
   print "            \r" # extra space to overwrite in case next sentence is shorts
-end 
+end
 
 def reload!
   $VERBOSE = nil
@@ -482,9 +491,9 @@ def reload!
 
   # Loop through and reload every file in all relevant project directories.
   reload_dirs.each do |dir|
-    Dir.glob("#{root_dir}/#{dir}/**/*.rb").each do |f| 
+    Dir.glob("#{root_dir}/#{dir}/**/*.rb").each do |f|
       begin
-        load(f) rescue nil 
+        load(f) rescue nil
       rescue Exception => e
       end
     end
@@ -492,11 +501,32 @@ def reload!
 
   ['override'].each do |file_name|
     begin
-      load("root_dir/#{file_name}.rb") rescue nil 
+      load("root_dir/#{file_name}.rb") rescue nil
     rescue Exception => e
     end
   end
-  
+
   # Return true when complete.
   true
+end
+
+def net_ssh_force_sha1_login!
+  OpenSSL::PKey::DSA.class_eval do
+    def ssh_do_sign(data)
+      sig = sign( OpenSSL::Digest::SHA1.new, data)
+      a1sig = OpenSSL::ASN1.decode( sig )
+
+      sig_r = a1sig.value[0].value.to_s(2)
+      sig_s = a1sig.value[1].value.to_s(2)
+
+      if sig_r.length > 20 || sig_s.length > 20
+        raise OpenSSL::PKey::DSAError, "bad sig size"
+      end
+
+      sig_r = "\0" * ( 20 - sig_r.length ) + sig_r if sig_r.length < 20
+      sig_s = "\0" * ( 20 - sig_s.length ) + sig_s if sig_s.length < 20
+
+      return sig_r + sig_s
+    end
+  end
 end

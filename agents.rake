@@ -68,7 +68,7 @@ namespace :agents do
         SQL
 
       agent_balance_orders = execute_sql(sql).to_a
-      
+
       disply_tables(
         data: agent_balance_orders,
         columns: agent_balance_orders_columns,
@@ -78,8 +78,8 @@ namespace :agents do
             submit_date: proc_format_datetime
           }
         }
-      )      
-      
+      )
+
       disply_tables(
         data: order_balances,
         columns: order_balances_columns,
@@ -89,8 +89,8 @@ namespace :agents do
             purchase_date: proc_format_datetime
           }
         }
-      )      
-      
+      )
+
       disply_tables(
         data: user_balances,
         columns: user_balances_columns,
@@ -126,6 +126,11 @@ namespace :agents do
     # @order = Backend::App::Orders.by_id(544255)
     # order_status_valid!(resp, %w[completed])
     # logistic_dropoff_status_valid!(resp, %w[commissions_paid]) # Special case
+  end
+
+  task active_tracings: :environment do |t|
+    agent_login('0788822233', '123456')
+    get('agents/orders/28087454/active_tracings?id=28087454', {}, api_token)
   end
 
   task orders_commission_tabs_correct: :environment do |t|
@@ -183,7 +188,7 @@ namespace :agents do
   task orders_commission_processing_all: :environment do |t|
     starting(t)
     results = { count: 0, codes: [] }
-    
+
     resp = get_agent_orders(START_DATE, END_DATE, 'processing', 'agents_all', 0, 100)
     @order_codes_processing = resp['orders']['items'].map { |item| item['code'] }.uniq
     # success_msg("Orders #{@order_codes_processing.count} when processing and agents_all")
@@ -268,11 +273,11 @@ namespace :agents do
   def order_status_valid!(resp, status_expected)
     fetch_items(resp).all?{ |order| status_expected.include?(order['order_status']) }
   end
-  
+
   def logistic_dropoff_status_valid!(resp, status_expected)
     fetch_items(resp).all?{ |order| status_expected.include?(order['logistic_dropoff_status']) }
   end
-  
+
   def logistic_order_status_valid!(resp, status_expected)
     fetch_items(resp).all? { |order| status_expected.include?(order['logistic_order_status']) }
   end
@@ -286,21 +291,21 @@ end
 
 # agent_balance_orders.each do |agent_balance_order|
 #   row =
-#     agent_balance_order_columns.map do |e| 
+#     agent_balance_order_columns.map do |e|
 #       "#{e.to_s.split('_').map{|e| e[0].upcase}.join('_')}: #{agent_balance_order[e]}"
 #     end
 #   puts "ID ##{agent_balance_order[:entity_id]} - #{build_colunms_with_color(row)}"
 # end
 # order_balances.each do |order_balance|
 #   row =
-#     order_balance_columns.map do |e| 
+#     order_balance_columns.map do |e|
 #       "#{e.to_s.split('_').map{|e| e[0].upcase}.join('_')}: #{order_balance[e]}"
 #     end
 #   puts "ID ##{order_balance[:entity_id]} - #{build_colunms_with_color(row)}"
 # end
 # user_balances.each do |user_balance|
 #   row =
-#     user_balance_columns.map do |e| 
+#     user_balance_columns.map do |e|
 #       "#{e.to_s.split('_').map{|e| e[0].upcase}.join('_')}: #{user_balance[e]}"
 #     end
 #   puts "ID ##{user_balance[:entity_id]} - #{build_colunms_with_color(row)}"

@@ -7,15 +7,31 @@ namespace :logistics do
     run('logistics:multi_send_to_nationwide')
     pass(t)
   end
-  
+
   task admin_dashboard_login: :environment do |t|
     resp = dashboard_logistic_login!
     resp.status_200?
   end
-  
+
   task admin_account_login: :environment do |t|
     resp = account_logistic_login!
     resp.status_200?
+  end
+
+  task debug_order: :environment do |t|
+    starting(t)
+    run('logistics:admin_dashboard_login', true)
+    resp = get('logistics/orders/28042970', {}, api_token)
+    puts  resp["order"]["final_dropoff"]["name"]
+    # binding.pry
+    pass(t)
+  end
+
+  task finance_clients_order_report: :environment do |t|
+    run('logistics:admin_account_login', true)
+    resp = get('logistics/finance/client_pending_payment_orders?end_date=1554397190&limit=25&offset=0&start_date=1549299600', {}, api_token)
+    resp.status_200?
+    binding.pry
   end
 
   task manager_mark_pending_deliver_order: :environment do |t|
@@ -28,6 +44,34 @@ namespace :logistics do
     resp = put('external_clients/delivery/orders/feedback_order', {feedback_status: :deliver_again, force_cancel: true, force_send_sms: false, order_id: 28044136} , api_token)
   end
 
+  task dropoff_tracking_code: :environment do |t|
+    starting(t)
+    run('logistics:admin_dashboard_login', true)
+
+    ['28047707', '28046694', '28046688', '28046568', '28046745', '28046742', '28041988', '28039198'].each do |order_id|
+      resp = put("logistics/orders/#{order_id}/nationwide_tracking_code", { order_id: order_id, nationwide_tracking_code: "TX#{order_id}"}, api_token)
+    end
+
+    put('logistics/orders/multi_nationwide_tracking_code', {
+      email: 'hoanghiepitvnn@gmail.com',
+      nationwide_tracking_code_list: {
+        'DH89193082' => 'TT89193082',
+        'MD88914082' => 'TT88914082',
+        'MD86564082' => 'TT86564082',
+        'MD88664082' => 'TT88664082',
+        'MD49664082' => 'TT49664082',
+        'MD24764082' => 'TT24764082',
+        'MD54764082' => 'TT54764082',
+        'MD70774082' => 'TT70774082'
+      }.to_json
+    }, api_token)
+  end
+
+  task change_dropoff: :environment do
+    run('logistics:admin_dashboard_login', true)
+    put('logistics/orders/28085734/update_final_dropoff', { order_id: 28085734, final_dropoff_id: 572753 }, api_token)
+    put('logistics/orders/28085734/update_final_dropoff', { order_id: 28085734, final_dropoff_id: 28019009 }, api_token)
+  end
 
   task manager_update_package_weight: :environment do |t|
     starting(t)
@@ -37,13 +81,12 @@ namespace :logistics do
     # 'Danh sách đơn hàng không được phép để trống.'
     # 'Danh sách đơn hàng không hợp lệ'
     # 'Email không được phép để trống khi có nhiều hơn một đơn hàng'
-  
+
     fields = %w[entity_id code delivery_original_price okiela_24_7_delivery_fee okiela_24_7_shipping_fee final_order_discount final_price final_price_after_tax]
     codes = %w[MD20031082 MD200310822]
     # codes.concat %w[MD734385 MD044385 MD654385 MD954385 MD264385 MD564385 MD864385 MD374385 MD674385 MD974385 MD284385 MD094385 MD394385 MD694385 MD994385 MD205385 MD505385 MD425385 MD725385 MD035385]
 
     codes.concat %w[MD92821082]
-
 
     old_orders = load_order_fee(fields, codes)
     old_weights = load_order_weight(codes)
@@ -97,7 +140,7 @@ namespace :logistics do
     end
 
     pass(t)
-  end 
+  end
 
   task update_dropoff_owner: :environment do |t|
     starting(t)
@@ -111,7 +154,7 @@ namespace :logistics do
     dropoff_owner = Backend::App::LogisticUsers.by_id('28013549', true)
     resp.eq?(dropoff_owner.phone, phone_number)
     pass(t)
-  end 
+  end
 
   task manager_change_oll_order_type: :environment do |t|
     starting(t)
@@ -126,8 +169,8 @@ namespace :logistics do
     %w[a 0 1 3].each do |failure_flag|
       current_okiela_24_7_nationwide_flag = order.okiela_24_7_nationwide_flag
       details_msg("INFO", "Does not change Order #{order.id}-#{order.code} from #{current_okiela_24_7_nationwide_flag} to #{failure_flag} ... ", new_line: false)
-      resp = post('logistics/manager_change_oll_order_type', { 
-        order_id: order.id, 
+      resp = post('logistics/manager_change_oll_order_type', {
+        order_id: order.id,
         new_okiela_24_7_nationwide_flag: failure_flag
       }, api_token)
       resp.status_403?
@@ -138,8 +181,8 @@ namespace :logistics do
     end
 
     details_msg("INFO", "Change Order #{order.id}-#{order.code} from #{order.okiela_24_7_nationwide_flag} to #{2} ... ", new_line: false)
-    resp = post('logistics/manager_change_oll_order_type', { 
-      order_id: order.id, 
+    resp = post('logistics/manager_change_oll_order_type', {
+      order_id: order.id,
       new_okiela_24_7_nationwide_flag: 2
     }, api_token)
     resp.status_200?
@@ -147,11 +190,11 @@ namespace :logistics do
     order = Backend::App::Orders.by_id(order.id, true)
     resp.eq?(order.okiela_24_7_nationwide_flag, 2)
     details_msg("", "OK", new_line: true, color: :green)
-  
+
     current_okiela_24_7_nationwide_flag = order.okiela_24_7_nationwide_flag
     details_msg("INFO", "Change Order #{order.id}-#{order.code} from #{current_okiela_24_7_nationwide_flag} to #{3} ... ", new_line: false)
-    resp = post('logistics/manager_change_oll_order_type', { 
-      order_id: order.id, 
+    resp = post('logistics/manager_change_oll_order_type', {
+      order_id: order.id,
       new_okiela_24_7_nationwide_flag: 3
     }, api_token)
     order = Backend::App::Orders.by_id(order.id, true)
@@ -166,11 +209,46 @@ namespace :logistics do
     end
     details_msg("", "OK", new_line: true, color: :green)
 
-    # binding.pry
-    
-    # binding.pry
+    current_okiela_24_7_nationwide_flag = order.okiela_24_7_nationwide_flag
+    details_msg("INFO", "Change Order #{order.id}-#{order.code} from #{current_okiela_24_7_nationwide_flag} to #{2} ... ", new_line: false)
+    resp = post('logistics/manager_change_oll_order_type', {
+      order_id: order.id,
+      new_okiela_24_7_nationwide_flag: 2
+    }, api_token)
+    order = Backend::App::Orders.by_id(order.id, true)
+    if order.final_dropoff.blank?
+      resp.status_403?
+      resp.message_eq?("Vui lòng nhập Điểm Giao Dịch để cập nhật trạng thái")
+      resp.eq?(order.okiela_24_7_nationwide_flag, current_okiela_24_7_nationwide_flag)
+    else
+      resp.status_200?
+      resp.message_eq?('Cập nhật trạng thái thành công')
+      resp.eq?(order.okiela_24_7_nationwide_flag, 2)
+    end
+    details_msg("", "OK", new_line: true, color: :green)
+
+    execute_with_msg("Change Order #{order.id}-#{order.code} from #{order.okiela_24_7_nationwide_flag} to #{1}") {
+      current_okiela_24_7_nationwide_flag = order.okiela_24_7_nationwide_flag
+      resp = post('logistics/manager_change_oll_order_type', {
+        order_id: order.id,
+        new_okiela_24_7_nationwide_flag: 1
+      }, api_token)
+      order = Backend::App::Orders.by_id(order.id, true)
+      if order.final_dropoff.blank?
+        resp.status_403?
+        resp.message_eq?("Vui lòng nhập Điểm Giao Dịch để cập nhật trạng thái")
+        resp.eq?(order.okiela_24_7_nationwide_flag, current_okiela_24_7_nationwide_flag)
+        false
+      else
+        resp.status_200?
+        resp.message_eq?('Cập nhật trạng thái thành công')
+        resp.eq?(order.okiela_24_7_nationwide_flag, 1)
+        true
+      end
+    }
+
     pass(t)
-  end 
+  end
 
   task load_orders_by_driver: :environment do |t|
     starting(t)
@@ -195,6 +273,14 @@ namespace :logistics do
     # end
     # details_msg("INFO", "Name 3: #{Backend::App::Users.by_id(user.id, true).forename}")
     # pass(t)
+  end
+
+  task search_orders: :environment do |t|
+    run('logistics:admin_dashboard_login', true)
+    res = get('logistics/orders?date_type=initial_purchase_date&end_date=1551718790&limit=25&offset=0&oll_type=all&order_by=initial_purchase_date&order_direction=desc&order_type=dashboard_general&search_term=Chau+test+%2322223&start_date=1546189200&view_type=dashboard_general_info', {}, api_token)
+    res = get('logistics/orders?date_type=initial_purchase_date&end_date=1551718790&limit=25&offset=0&oll_type=all&order_by=initial_purchase_date&order_direction=desc&order_type=dashboard_general&search_term=H%C3%A0ng+Tuy%E1%BB%83n+Ch%E1%BB%8D&start_date=1546189200&view_type=dashboard_general_info', {}, api_token)
+    binding.pry
+
   end
 
   task load_orders: :environment do |t|
@@ -253,7 +339,7 @@ namespace :logistics do
     reset_order_to_driver(
       params[:current_pickup_driver_id],
       %w[
-        MD892583 MD225583 MD032683 MD831983 MD942093 MD921193 
+        MD892583 MD225583 MD032683 MD831983 MD942093 MD921193
         MD431193 MD137393 MD369393 MD179393 MD541024 MD612344
         MD780824 MD992144 MD04029972 MD64029972 MD874355
       ]
@@ -359,7 +445,7 @@ namespace :logistics do
       client_id: client.id,
       email: 'hoanghiepitvnn@gmail.com'
     }, api_token)
-    
+
     resp.status_200?
     resp.message_eq?('Đã cập nhật thành công !')
     delay(5)
@@ -393,7 +479,7 @@ namespace :logistics do
       email: 'hoanghiepitvnn@gmail.com',
       order_code_list: order_code_list.to_json
     }, api_token)
-    
+
     details_msg("\n\nINFO", 'Execute rake job_queues:process')
     run_sys_cmd(['rake job_queues:process'])
   end
@@ -965,7 +1051,7 @@ namespace :logistics do
   end
 
   def clean_orders
-    sql = 
+    sql =
       <<-SQL
         SELECT entity_id
         FROM res_order
@@ -1003,7 +1089,7 @@ namespace :logistics do
     sql =
       <<-SQL
         update res_order
-        set es_synced = 0, 
+        set es_synced = 0,
             pickup_driver = #{driver_id}
         WHERE code IN (#{orders.inject([]){|a, e| a << ("'#{e}'")}.join(',')})
       SQL
@@ -1031,12 +1117,12 @@ namespace :logistics do
         ORDER BY entity_id
       SQL
 
-    
+
   end
 
   def load_order_weight(codes)
     codes.inject({}) do |result, code|
-      order = Backend::App::Orders.by_parameters(code: code, limit: 1) 
+      order = Backend::App::Orders.by_parameters(code: code, limit: 1)
       return result if order.nil? || order.order_detail_collection.nil? || order.order_detail_collection.first.nil?
       result.merge(code => order.order_detail_collection.first.package_weight)
     end
