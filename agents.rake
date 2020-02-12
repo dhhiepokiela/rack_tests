@@ -7,6 +7,27 @@ END_DATE = Time.now.unix_time
 @order_codes_completed = []
 
 namespace :agents do
+  task news_feed: :environment do |t|
+    starting(t)
+    # agent_login('0898157788', '123456')
+    resp = get('auth/h34lth_ch3ck', {}, api_token)
+    pass(t)
+  end
+
+  task order_has_issues: :environment do |t|
+    starting(t)
+    agent_login('0898157788', '123456')
+    resp = get('agents/orders?end_date=1571331599.999023&limit=15&offset=0&order_type=agents_dropoff_order&start_date=1570640400.000000', {}, api_token)
+    pass(t)
+  end
+
+  task buy_card_50k: :environment do |t|
+    starting(t)
+    agent_login('0898157979', '123456')
+    resp = post('agents/confirm_use_service', {campaign_vendor_promotion_embedded: true, quantity: 1, service_provider: 'viettel', service_type: 'phone_card', tier_type: 'viettel_tier_3'}, api_token)
+    pass(t)
+  end
+
   task all: :environment do |t|
     starting(t)
     %w[01010101017 01248760542 01234567890 0898151235].each do |phone_number|
