@@ -47,22 +47,3 @@ Integer.class_eval do
     end
   end
 end
-
-OpenSSL::PKey::DSA.class_eval do
-  def ssh_do_sign(data)
-    sig = sign( OpenSSL::Digest::SHA1.new, data)
-    a1sig = OpenSSL::ASN1.decode( sig )
-
-    sig_r = a1sig.value[0].value.to_s(2)
-    sig_s = a1sig.value[1].value.to_s(2)
-
-    if sig_r.length > 20 || sig_s.length > 20
-      raise OpenSSL::PKey::DSAError, "bad sig size"
-    end
-
-    sig_r = "\0" * ( 20 - sig_r.length ) + sig_r if sig_r.length < 20
-    sig_s = "\0" * ( 20 - sig_s.length ) + sig_s if sig_s.length < 20
-
-    return sig_r + sig_s
-  end
-end

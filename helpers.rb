@@ -67,6 +67,7 @@ def run(task, sub_task = false)
   end
   Rake::Task[task].reenable
   Rake::Task[task].invoke
+  puts ''
 end
 
 def change_to_local_server!
@@ -163,6 +164,19 @@ HTTParty::Response.class_eval do
   end
 end
 
+def expect(title, expected, &block)
+  details_msg('INFO', title, new_line: false, color: :default)
+  details_msg('', ' ... ', new_line: false, color: :light_white)
+
+  got = block.call
+
+  if expected == got
+    details_msg('', 'PASS', new_line: true, color: :green)
+  else
+    details_msg('', "FAILED. Expected #{expected} but got #{got}", new_line: true, color: :red)
+  end
+end
+
 # {
 #   user_login: 'login',
 #   client_login: 'login_client',
@@ -184,6 +198,7 @@ end
 def buyer_login(phone)
   change_to_dev_server! if login_on_dev?
   user = Backend::App::Users.by_parameters(phone: phone, auth_system: 'facebook')
+
   data =
     get('auth/facebook', {
       facebook_id: user.auth_facebook_id,
@@ -295,17 +310,21 @@ def details_msg(title = '', msg = '', new_line: true, color: :light_cyan)
 end
 
 def execute_with_msg(msg)
-  details_msg("INFO", "#{msg} ... ", new_line: false)
+  details_msg('INFO', "#{msg} ... ", new_line: false)
 
   if yield
-    details_msg("", "OK", new_line: true, color: :green)
+    details_msg('', "OK", new_line: true, color: :green)
   else
-    details_msg("", "Failed", new_line: true, color: :red)
+    details_msg('', "Failed", new_line: true, color: :red)
   end
 end
 
 def info_msg(msg = '')
   puts msg.colorize(:blue)
+end
+
+def warn_msg(msg = '')
+  puts msg.colorize(:yellow)
 end
 
 def success_msg(msg = '')
@@ -458,13 +477,17 @@ end
 
 def delay(seconds, description: nil, press_key_continue: false)
   if press_key_continue
-    details_msg("INFO", "Description: #{description}")
+    details_msg('INFO', "Description: #{description}")
     continue_story
   else
+    details_msg('INFO', "System will be continue in #{seconds} second(s)#{description ? ": #{description}" : ''}: ", new_line: false)
     seconds.times do |i|
-      details_msg("INFO", "System will be continue in #{seconds - i} second(s)#{ description ? ": #{description}" : ''}")
+      details_msg('', seconds - i, new_line: false, color: :green)
+      details_msg('', ' ... ', new_line: false, color: :default)
       sleep(1)
     end
+
+    details_msg('', 'DONE', color: :green)
   end
 end
 
